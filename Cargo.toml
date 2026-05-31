@@ -1,0 +1,23 @@
+[package]
+name = "app-shots"
+version = "0.1.0"
+edition = "2024"
+description = "Agent-neutral app screenshot capture CLI"
+license = "Apache-2.0"
+
+[[bin]]
+name = "appshots"
+path = "src/main.rs"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+clap = { version = "4.5", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+rand = "0.9"
+schemars = { version = "0.8", features = ["chrono"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3.23"
