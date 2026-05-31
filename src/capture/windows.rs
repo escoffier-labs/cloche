@@ -67,6 +67,9 @@ public static class NativeMethods {
 
     [DllImport("user32.dll")]
     public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr extraData);
+
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint flags);
 }
 '@
 
@@ -159,6 +162,34 @@ function Save-Bounds([int]$X, [int]$Y, [int]$Width, [int]$Height) {
     }
 }
 
+function Save-Window([IntPtr]$Handle, [object]$WindowInfo) {
+    if ($Handle -eq [IntPtr]::Zero) { throw "window handle is empty" }
+    $g = $WindowInfo.geometry
+    if ($g.width -le 0 -or $g.height -le 0) { throw "window bounds are empty" }
+
+    $bitmap = New-Object System.Drawing.Bitmap ([int]$g.width), ([int]$g.height)
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    $hdc = $graphics.GetHdc()
+    try {
+        $ok = [NativeMethods]::PrintWindow($Handle, $hdc, 2)
+    } finally {
+        $graphics.ReleaseHdc($hdc)
+        $graphics.Dispose()
+    }
+
+    try {
+        if (-not $ok) {
+            throw "PrintWindow returned false"
+        }
+        $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    } catch {
+        $bitmap.Dispose()
+        Save-Bounds $g.x $g.y $g.width $g.height
+        return
+    }
+    $bitmap.Dispose()
+}
+
 $selectedWindow = $null
 switch ($Target) {
     'screen' {
@@ -169,13 +200,12 @@ switch ($Target) {
         $handle = [NativeMethods]::GetForegroundWindow()
         $selectedWindow = Get-WindowInfo $handle
         if (-not $selectedWindow) { throw "no visible foreground window was found" }
-        $g = $selectedWindow.geometry
-        Save-Bounds $g.x $g.y $g.width $g.height
+        Save-Window $handle $selectedWindow
     }
     'window' {
         $selectedWindow = Find-Window
-        $g = $selectedWindow.geometry
-        Save-Bounds $g.x $g.y $g.width $g.height
+        $handle = Convert-Handle $selectedWindow.id
+        Save-Window $handle $selectedWindow
     }
     default {
         throw "unsupported capture target: $Target"
@@ -361,8 +391,8 @@ pub fn capture(request: CaptureRequest<'_>) -> Result<CaptureSuccess, AppError> 
             name: "windows".to_string(),
             strategy: match request.target {
                 CaptureTarget::Screen => "SystemInformation virtual screen + CopyFromScreen",
-                CaptureTarget::Active => "GetForegroundWindow + GetWindowRect + CopyFromScreen",
-                CaptureTarget::Window => "EnumWindows lookup + GetWindowRect + CopyFromScreen",
+                CaptureTarget::Active => "GetForegroundWindow + GetWindowRect + PrintWindow",
+                CaptureTarget::Window => "EnumWindows lookup + GetWindowRect + PrintWindow",
             }
             .to_string(),
         },

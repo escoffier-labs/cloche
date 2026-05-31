@@ -127,7 +127,7 @@ tr '\0' '\n' </proc/$(pgrep -u "$(id -u)" -n gnome-shell)/environ | grep -E '^(D
 
 ## Windows Backend Notes
 
-- Active/window capture uses Win32 foreground-window and top-level-window metadata, then captures the visible window bounds through .NET `CopyFromScreen`.
+- Active/window capture uses Win32 foreground-window and top-level-window metadata, then captures the target window with `PrintWindow` so covered windows are not polluted by whatever is on top. It falls back to `.NET CopyFromScreen` if `PrintWindow` is unavailable for that window.
 - Screen capture uses the Windows virtual screen.
 - Text extraction is best-effort through UI Automation.
 - Capture must run in a logged-in interactive desktop session. Plain OpenSSH sessions can build and run `doctor`, but Windows blocks screen capture from the non-interactive SSH service session.

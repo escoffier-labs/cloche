@@ -7,7 +7,7 @@ App Shots is a cross-platform, agent-neutral CLI with Linux as the first backend
 ## Current: Linux And Windows MVP
 
 - Active-window capture on GNOME/X11 with automatic desktop environment discovery for TTY/SSH/agent processes.
-- Windows active-window, selected-window, and virtual-screen capture through Win32 metadata plus .NET screen capture.
+- Windows active-window and selected-window capture through Win32 metadata plus `PrintWindow`, with .NET screen capture for virtual-screen captures and fallback cases.
 - Windows best-effort text extraction through UI Automation.
 - Raw `shot.png`, polished randomized `shot-card.png`, `metadata.json`, and optional `text.txt`.
 - Stable JSON output for agent subprocess use.
@@ -16,7 +16,6 @@ App Shots is a cross-platform, agent-neutral CLI with Linux as the first backend
 
 ## Next: Windows Hardening
 
-- Add a fully native Windows capture path that can avoid `CopyFromScreen` limitations where possible.
 - Improve active-window capture when a window is partially covered or minimized.
 - Add Windows integration tests for interactive-session capture.
 - Add signed release binaries once the publishing path is stable.

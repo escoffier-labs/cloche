@@ -14,7 +14,15 @@ New-Item -ItemType Directory -Force -Path $OutRoot | Out-Null
 
 $process = $null
 if ($LaunchNotepad) {
-    $process = Start-Process notepad.exe -PassThru
+    $samplePath = Join-Path $OutRoot "sample.txt"
+    @"
+App Shots Windows capture test
+
+Target: Notepad
+Backend: Win32 PrintWindow
+Result: no occluding terminal pixels
+"@ | Set-Content -Path $samplePath -Encoding UTF8
+    $process = Start-Process notepad.exe -ArgumentList $samplePath -PassThru
     Start-Sleep -Seconds 2
     Add-Type @"
 using System;
