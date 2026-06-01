@@ -47,16 +47,16 @@ pub fn payload(args: CodexPayloadArgs) -> Result<ExitCode, Box<dyn std::error::E
         "textElements": []
     })];
 
-    if let Some(text_path) = metadata.text.path.as_ref() {
-        if let Ok(text_bytes) = util::read(text_path) {
-            let text = String::from_utf8_lossy(&text_bytes).trim().to_string();
-            if !text.is_empty() {
-                input.push(json!({
-                    "type": "text",
-                    "text": format!("Available app text:\n{text}"),
-                    "textElements": []
-                }));
-            }
+    if let Some(text_path) = metadata.text.path.as_ref()
+        && let Ok(text_bytes) = util::read(text_path)
+    {
+        let text = String::from_utf8_lossy(&text_bytes).trim().to_string();
+        if !text.is_empty() {
+            input.push(json!({
+                "type": "text",
+                "text": format!("Available app text:\n{text}"),
+                "textElements": []
+            }));
         }
     }
 

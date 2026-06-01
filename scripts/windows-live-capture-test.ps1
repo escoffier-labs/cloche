@@ -24,7 +24,7 @@ Target: Notepad
 Backend: Win32 PrintWindow
 Result: no occluding terminal pixels
 "@ | Set-Content -Path $samplePath -Encoding UTF8
-    $process = Start-Process notepad.exe -ArgumentList @("-multiInst", $samplePath) -PassThru
+    $process = Start-Process notepad.exe -ArgumentList @($samplePath) -PassThru
     Start-Sleep -Seconds 2
     Add-Type @"
 using System;
@@ -69,7 +69,7 @@ public static class FocusNative {
         if ($windowHandle -ne [IntPtr]::Zero) {
             [void][FocusNative]::ShowWindow($windowHandle, 9)
             [void][FocusNative]::MoveWindow($windowHandle, 120, 120, $WindowWidth, $WindowHeight, $true)
-            [void][FocusNative]::SetWindowPos($windowHandle, [IntPtr]::Zero, 120, 120, $WindowWidth, $WindowHeight, 0x0040)
+            [void][FocusNative]::SetWindowPos($windowHandle, [IntPtr](-1), 120, 120, $WindowWidth, $WindowHeight, 0x0040)
             [void][FocusNative]::SetForegroundWindow($windowHandle)
         }
     } catch {

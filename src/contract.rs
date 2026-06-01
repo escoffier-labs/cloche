@@ -103,24 +103,13 @@ pub struct Geometry {
     pub screen: Option<i32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TextInfo {
     pub available: bool,
     pub path: Option<PathBuf>,
     pub bytes: u64,
     pub source: Option<String>,
-}
-
-impl Default for TextInfo {
-    fn default() -> Self {
-        Self {
-            available: false,
-            path: None,
-            bytes: 0,
-            source: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -199,7 +188,7 @@ mod tests {
 
         let value = serde_json::to_value(result).expect("serialize appshot result");
 
-        assert_eq!(value["createdAt"].is_string(), true);
+        assert!(value["createdAt"].is_string());
         assert_eq!(value["outputDir"], json!("/tmp/appshot"));
         assert_eq!(value["target"], json!("active"));
     }

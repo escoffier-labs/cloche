@@ -37,7 +37,7 @@ pub fn command_path(program: &str) -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     let candidates = windows_command_candidates(program);
     #[cfg(not(target_os = "windows"))]
-    let candidates = vec![program.to_string()];
+    let candidates = [program.to_string()];
     std::env::split_paths(&path)
         .flat_map(|dir| candidates.iter().map(move |candidate| dir.join(candidate)))
         .find(|candidate| candidate.is_file())

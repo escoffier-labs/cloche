@@ -196,16 +196,21 @@ fn capture_active(output_path: &Path) -> Result<CaptureSuccess, AppError> {
             None
         };
 
-        if let Some(window) = active_window.clone() {
-            if capture_x11_window(window.id.as_deref(), output_path).is_ok() {
-                return Ok(CaptureSuccess {
-                    backend: BackendInfo {
-                        name: "x11".to_string(),
-                        strategy: "xdotool active window + ImageMagick import".to_string(),
-                    },
-                    window: Some(window),
-                });
-            }
+        let Some(window) = active_window else {
+            return Err(AppError::Message(
+                "no active X11 window could be identified; use --target screen for full-screen capture"
+                    .to_string(),
+            ));
+        };
+
+        if capture_x11_window(window.id.as_deref(), output_path).is_ok() {
+            return Ok(CaptureSuccess {
+                backend: BackendInfo {
+                    name: "x11".to_string(),
+                    strategy: "xdotool active window + ImageMagick import".to_string(),
+                },
+                window: Some(window),
+            });
         }
 
         if util::has_command("gnome-screenshot") {
@@ -216,7 +221,7 @@ fn capture_active(output_path: &Path) -> Result<CaptureSuccess, AppError> {
                     name: "gnome-screenshot".to_string(),
                     strategy: "active window".to_string(),
                 },
-                window: active_window,
+                window: Some(window),
             });
         }
 
@@ -228,7 +233,7 @@ fn capture_active(output_path: &Path) -> Result<CaptureSuccess, AppError> {
                     name: "scrot".to_string(),
                     strategy: "active window".to_string(),
                 },
-                window: active_window,
+                window: Some(window),
             });
         }
     }

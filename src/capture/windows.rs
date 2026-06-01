@@ -162,6 +162,39 @@ function Save-Bounds([int]$X, [int]$Y, [int]$Width, [int]$Height) {
     }
 }
 
+function Test-ClientAreaLooksBlank([System.Drawing.Bitmap]$Bitmap) {
+    $width = [int]$Bitmap.Width
+    $height = [int]$Bitmap.Height
+    if ($width -lt 160 -or $height -lt 140) { return $false }
+
+    $xStart = [Math]::Max(4, [int]($width * 0.06))
+    $xEnd = [Math]::Min($width - 5, [int]($width * 0.94))
+    $yStart = [Math]::Min($height - 5, [Math]::Max(56, [int]($height * 0.20)))
+    $yEnd = [Math]::Min($height - 5, [int]($height * 0.88))
+    if ($xEnd -le $xStart -or $yEnd -le $yStart) { return $false }
+
+    $stepX = [Math]::Max(1, [int](($xEnd - $xStart) / 24))
+    $stepY = [Math]::Max(1, [int](($yEnd - $yStart) / 14))
+    $first = $null
+    $maxDelta = 0
+    $samples = 0
+
+    for ($y = $yStart; $y -le $yEnd; $y += $stepY) {
+        for ($x = $xStart; $x -le $xEnd; $x += $stepX) {
+            $pixel = $Bitmap.GetPixel($x, $y)
+            if ($null -eq $first) { $first = $pixel }
+            $delta = [Math]::Abs([int]$pixel.R - [int]$first.R) +
+                [Math]::Abs([int]$pixel.G - [int]$first.G) +
+                [Math]::Abs([int]$pixel.B - [int]$first.B)
+            if ($delta -gt $maxDelta) { $maxDelta = $delta }
+            $samples++
+            if ($maxDelta -gt 18) { return $false }
+        }
+    }
+
+    return ($samples -gt 20 -and $maxDelta -le 18)
+}
+
 function Save-Window([IntPtr]$Handle, [object]$WindowInfo) {
     if ($Handle -eq [IntPtr]::Zero) { throw "window handle is empty" }
     $g = $WindowInfo.geometry
@@ -180,6 +213,9 @@ function Save-Window([IntPtr]$Handle, [object]$WindowInfo) {
     try {
         if (-not $ok) {
             throw "PrintWindow returned false"
+        }
+        if (Test-ClientAreaLooksBlank $bitmap) {
+            throw "PrintWindow rendered a blank client area"
         }
         $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
     } catch {
@@ -391,8 +427,12 @@ pub fn capture(request: CaptureRequest<'_>) -> Result<CaptureSuccess, AppError> 
             name: "windows".to_string(),
             strategy: match request.target {
                 CaptureTarget::Screen => "SystemInformation virtual screen + CopyFromScreen",
-                CaptureTarget::Active => "GetForegroundWindow + GetWindowRect + PrintWindow",
-                CaptureTarget::Window => "EnumWindows lookup + GetWindowRect + PrintWindow",
+                CaptureTarget::Active => {
+                    "GetForegroundWindow + GetWindowRect + PrintWindow/CopyFromScreen fallback"
+                }
+                CaptureTarget::Window => {
+                    "EnumWindows lookup + GetWindowRect + PrintWindow/CopyFromScreen fallback"
+                }
             }
             .to_string(),
         },

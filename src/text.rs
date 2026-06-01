@@ -27,7 +27,7 @@ def text_for(acc):
     except Exception:
         pass
 
-def collect(acc, depth=0, active_only=False):
+def collect(acc, depth=0, active_only=False, inside_active=False):
     if depth > 10:
         return
     try:
@@ -39,18 +39,20 @@ def collect(acc, depth=0, active_only=False):
         )
     except Exception:
         is_relevant = False
-    if not active_only or is_relevant:
+    include_text = inside_active or not active_only or is_relevant
+    if include_text:
         text_for(acc)
     try:
         count = acc.get_child_count()
     except Exception:
         return
+    child_inside_active = inside_active or is_relevant
     for idx in range(count):
         try:
             child = acc.get_child_at_index(idx)
         except Exception:
             continue
-        collect(child, depth + 1, active_only)
+        collect(child, depth + 1, active_only, child_inside_active)
 
 desktop_count = Atspi.get_desktop_count()
 for desktop_idx in range(desktop_count):
