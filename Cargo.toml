@@ -1,5 +1,5 @@
 [package]
-name = "app-shots"
+name = "appshots"
 version = "0.1.0"
 edition = "2024"
 description = "Agent-neutral app screenshot capture CLI"
