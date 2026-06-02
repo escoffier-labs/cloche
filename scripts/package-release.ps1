@@ -23,7 +23,7 @@ Remove-Item -Recurse -Force $Stage, $Archive -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 
 Copy-Item 'target/release/appshots.exe' (Join-Path $Stage 'appshots.exe')
-Copy-Item README.md, ROADMAP.md $Stage
+Copy-Item LICENSE, README.md, ROADMAP.md $Stage
 
 Compress-Archive -Path (Join-Path $Stage '*') -DestinationPath $Archive -Force
 Write-Output $Archive

@@ -25,7 +25,7 @@ rm -rf "$stage" "$archive"
 mkdir -p "$stage"
 
 cp target/release/appshots "$stage/appshots"
-cp README.md ROADMAP.md "$stage/"
+cp LICENSE README.md ROADMAP.md "$stage/"
 
 tar -C dist -czf "$archive" "$(basename "$stage")"
 echo "$archive"
