@@ -4,6 +4,23 @@ version = "0.1.0"
 edition = "2024"
 description = "Agent-neutral app screenshot capture CLI"
 license = "Apache-2.0"
+repository = "https://github.com/solomonneas/appshots"
+homepage = "https://github.com/solomonneas/appshots"
+readme = "README.md"
+rust-version = "1.85"
+keywords = ["screenshot", "linux", "cli", "mcp", "agents"]
+categories = ["command-line-utilities"]
+include = [
+    "/Cargo.lock",
+    "/Cargo.toml",
+    "/LICENSE",
+    "/README.md",
+    "/ROADMAP.md",
+    "/docs/*.png",
+    "/scripts/*.ps1",
+    "/scripts/*.sh",
+    "/src/**/*.rs",
+]
 
 [[bin]]
 name = "appshots"
