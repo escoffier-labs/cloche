@@ -328,6 +328,7 @@ mod tests {
     #[cfg(not(target_os = "windows"))]
     use std::os::unix::fs::PermissionsExt;
 
+    #[cfg(not(target_os = "windows"))]
     use super::command_path_in_path;
     use super::png_dimensions;
 
