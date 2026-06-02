@@ -399,7 +399,7 @@ fn find_captures(roots: Vec<PathBuf>, limit: usize) -> Vec<CaptureSummary> {
     for root in roots {
         collect_captures(&root, &mut captures);
     }
-    captures.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    captures.sort_by_key(|capture| std::cmp::Reverse(capture.created_at));
     captures.truncate(limit);
     captures
 }
