@@ -40,6 +40,7 @@ pub enum Command {
     Preview(PreviewArgs),
     Schema(SchemaArgs),
     CodexPayload(crate::codex::CodexPayloadArgs),
+    Mcp(crate::mcp::McpArgs),
 }
 
 #[derive(Debug, Args)]
@@ -84,6 +85,15 @@ pub struct GalleryArgs {
     pub root: Vec<PathBuf>,
     #[arg(long, default_value = "json")]
     pub format: OutputFormat,
+    /// Write a self-contained HTML gallery to this path.
+    #[arg(long)]
+    pub html: Option<PathBuf>,
+    /// HTML page title (used with --html).
+    #[arg(long, default_value = "App Shots")]
+    pub title: String,
+    /// Open the exported HTML gallery after writing it (requires --html).
+    #[arg(long)]
+    pub open: bool,
 }
 
 #[derive(Debug, Args)]
@@ -253,8 +263,53 @@ pub fn list_windows(_args: ListWindowsArgs) -> Result<ExitCode, Box<dyn std::err
 
 pub fn gallery(args: GalleryArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let captures = find_captures(args.root, args.limit);
-    print_json(&GalleryOutput { ok: true, captures })?;
+    let mut html_path = None;
+    if let Some(path) = args.html.as_ref() {
+        let html = render_gallery_html(&args.title, &captures);
+        util::write(path, html)?;
+        let written = util::canonical_or_original(path);
+        if args.open {
+            open_path(&written)?;
+        }
+        html_path = Some(written);
+    }
+    print_json(&GalleryOutput {
+        ok: true,
+        html_path,
+        captures,
+    })?;
     Ok(ExitCode::SUCCESS)
+}
+
+fn render_gallery_html(title: &str, captures: &[CaptureSummary]) -> String {
+    let items: Vec<crate::html::GalleryItem> = captures
+        .iter()
+        .map(|capture| {
+            let image = capture
+                .presentation_image
+                .as_ref()
+                .or(capture.image.as_ref());
+            let window_title = capture
+                .window
+                .as_ref()
+                .and_then(|window| window.title.clone().or_else(|| window.app_name.clone()))
+                .unwrap_or_else(|| "Untitled capture".to_string());
+            crate::html::GalleryItem {
+                title: window_title,
+                app: capture
+                    .window
+                    .as_ref()
+                    .and_then(|window| window.app_name.clone()),
+                target: format!("{:?}", capture.target).to_lowercase(),
+                width: image.and_then(|info| info.width),
+                height: image.and_then(|info| info.height),
+                created_at: capture.created_at.to_rfc3339(),
+                output_dir: capture.output_dir.display().to_string(),
+                image_path: image.map(|info| info.path.as_path()),
+            }
+        })
+        .collect();
+    crate::html::render(title, &items)
 }
 
 pub fn latest(args: LatestArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
@@ -322,6 +377,8 @@ struct CaptureSummary {
 #[serde(rename_all = "camelCase")]
 struct GalleryOutput {
     ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    html_path: Option<PathBuf>,
     captures: Vec<CaptureSummary>,
 }
 

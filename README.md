@@ -65,11 +65,13 @@ appshots capture --target active --style-seed 12345 --out-dir /tmp/appshot --for
 appshots capture --target screen --out-dir /tmp/appshot --format json
 appshots capture --target window --title Firefox --out-dir /tmp/appshot --format json
 appshots gallery --limit 10
+appshots gallery --root /tmp --html /tmp/appshots.html --title "My Shots" --open
 appshots latest
 appshots preview
 appshots open /tmp/appshot
 appshots schema
 appshots codex-payload --thread-id THREAD_ID /tmp/appshot
+appshots mcp
 ```
 
 ## Output Files
@@ -102,6 +104,22 @@ appshots codex-payload --thread-id "$THREAD_ID" /tmp/appshot-123
 ```
 
 Claude Code, OpenClaw, Hermes, and other agents should treat `appshots` as a normal subprocess tool. The core command has no MCP or desktop-app dependency.
+
+## MCP Server
+
+`appshots mcp` runs a minimal stdio MCP server for clients that prefer the Model Context Protocol over direct subprocess calls. It speaks newline-delimited JSON-RPC 2.0 on stdin/stdout and exposes `capture`, `list_windows`, `doctor`, `latest`, and `gallery` as tools. Each tool call shells out to the same binary, so the JSON contract is identical to the CLI. Register it like any stdio MCP server, for example:
+
+```json
+{
+  "mcpServers": {
+    "appshots": { "command": "appshots", "args": ["mcp"] }
+  }
+}
+```
+
+## Gallery HTML Export
+
+`appshots gallery --html <path>` writes a single self-contained HTML file with each capture's image embedded inline, so the result can be shared without any companion files. Combine with `--root`, `--limit`, `--title`, and `--open`. The JSON output gains an `htmlPath` field pointing at the written file.
 
 ## Linux Backend Notes
 

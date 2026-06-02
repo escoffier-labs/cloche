@@ -3,6 +3,8 @@ mod capture;
 mod cli;
 mod codex;
 mod contract;
+mod html;
+mod mcp;
 mod polish;
 mod text;
 mod util;
@@ -34,5 +36,6 @@ fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
         Command::Preview(args) => cli::preview(args),
         Command::Schema(args) => cli::schema(args),
         Command::CodexPayload(args) => codex::payload(args),
+        Command::Mcp(args) => mcp::run(args),
     }
 }

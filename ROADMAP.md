@@ -13,6 +13,8 @@ App Shots is a cross-platform, agent-neutral CLI with Linux as the first backend
 - Stable JSON output for agent subprocess use.
 - Codex app-server payload generation through existing `localImage` input.
 - Capture history helpers: `gallery`, `latest`, and `preview`/`open`.
+- Self-contained HTML gallery export through `gallery --html` for sharing batches.
+- Optional stdio MCP server (`appshots mcp`) wrapping the CLI contract.
 
 ## Next: Windows Hardening
 
@@ -29,6 +31,4 @@ App Shots is a cross-platform, agent-neutral CLI with Linux as the first backend
 ## Later
 
 - Wayland compositor-specific active-window support where safe and possible.
-- Optional MCP wrapper around the CLI contract.
-- Gallery HTML export for sharing batches of appshots.
 - Additional presentation styles and user-configurable style presets.
