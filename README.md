@@ -1,8 +1,24 @@
-# App Shots
+<h1 align="center">App Shots</h1>
 
 <p align="center">
-  <img src="docs/appshot-settings-random-card-2026-05-31.png" alt="Linux Settings appshot card" width="58%">
-  <img src="docs/appshot-calculator-card-2026-05-31.png" alt="Linux Calculator appshot card" width="31%">
+  <em>Linux-first app screenshot capture for agents, scripts, and local workflows.</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/solomonneas/appshots/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/solomonneas/appshots/ci.yml?branch=master&style=for-the-badge&label=CI&logo=githubactions&logoColor=white" alt="CI status"></a>
+  <img src="https://img.shields.io/badge/Rust-2024-b7410e?style=for-the-badge&logo=rust&logoColor=white" alt="Rust 2024">
+  <img src="https://img.shields.io/badge/platform-Linux_first-2563eb?style=for-the-badge&logo=linux&logoColor=white" alt="Linux first">
+  <img src="https://img.shields.io/badge/Windows-supported-0078d4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows supported">
+  <img src="https://img.shields.io/badge/MCP-optional-7c3aed?style=for-the-badge" alt="Optional MCP server">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-2ea043?style=for-the-badge" alt="Apache-2.0 license"></a>
+</p>
+
+<p align="center">
+  <img src="docs/appshot-settings-random-card-2026-05-31.png" alt="Linux Settings appshot card" width="720">
+</p>
+
+<p align="center">
+  <img src="docs/appshot-calculator-card-2026-05-31.png" alt="Linux Calculator appshot card" width="420">
 </p>
 
 `appshots` is a Linux-first, agent-neutral app screenshot capture CLI. It captures the active app or window, writes a PNG plus metadata, and prints stable JSON so any shell-capable agent, script, or human workflow can use the same command.
