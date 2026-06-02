@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/solomonneas/appshots/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/solomonneas/appshots/ci.yml?branch=master&style=for-the-badge&label=CI&logo=githubactions&logoColor=white" alt="CI status"></a>
+  <a href="https://github.com/solomonneas/appshots/releases"><img src="https://img.shields.io/github/v/release/solomonneas/appshots?include_prereleases&style=for-the-badge&label=release" alt="GitHub release"></a>
   <img src="https://img.shields.io/badge/Rust-2024-b7410e?style=for-the-badge&logo=rust&logoColor=white" alt="Rust 2024">
   <img src="https://img.shields.io/badge/platform-Linux_first-2563eb?style=for-the-badge&logo=linux&logoColor=white" alt="Linux first">
   <img src="https://img.shields.io/badge/Windows-supported-0078d4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows supported">
