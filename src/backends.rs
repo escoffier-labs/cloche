@@ -46,7 +46,7 @@ pub struct FrameExtents {
 pub fn doctor_report() -> DoctorReport {
     #[cfg(target_os = "windows")]
     {
-        return windows::doctor_report(VERSION);
+        windows::doctor_report(VERSION)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -120,7 +120,7 @@ fn linux_doctor_report() -> DoctorReport {
 pub fn list_windows() -> WindowList {
     #[cfg(target_os = "windows")]
     {
-        return windows::list_windows();
+        windows::list_windows()
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -170,7 +170,7 @@ fn linux_list_windows() -> WindowList {
 pub fn capture(request: CaptureRequest<'_>) -> Result<CaptureSuccess, AppError> {
     #[cfg(target_os = "windows")]
     {
-        return windows::capture(request);
+        windows::capture(request)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -339,7 +339,7 @@ pub fn frame_extents_for_window(window: &WindowInfo) -> Option<FrameExtents> {
     #[cfg(target_os = "windows")]
     {
         let _ = window;
-        return None;
+        None
     }
     #[cfg(not(target_os = "windows"))]
     {

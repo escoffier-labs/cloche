@@ -445,7 +445,7 @@ fn open_path(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         std::process::Command::new("cmd")
             .args(["/C", "start", "", &path])
             .spawn()?;
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(target_os = "windows"))]
     {
