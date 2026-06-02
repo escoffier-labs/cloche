@@ -1,3 +1,5 @@
+#[cfg(not(target_os = "windows"))]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 #[cfg(not(target_os = "windows"))]
@@ -34,13 +36,17 @@ pub enum AppError {
 
 pub fn command_path(program: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
+    command_path_in_path(program, &path)
+}
+
+fn command_path_in_path(program: &str, path: &std::ffi::OsStr) -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     let candidates = windows_command_candidates(program);
     #[cfg(not(target_os = "windows"))]
     let candidates = [program.to_string()];
     std::env::split_paths(&path)
         .flat_map(|dir| candidates.iter().map(move |candidate| dir.join(candidate)))
-        .find(|candidate| candidate.is_file())
+        .find(|candidate| is_runnable_file(candidate))
 }
 
 pub fn has_command(program: &str) -> bool {
@@ -186,10 +192,16 @@ pub fn desktop_env_pairs() -> Vec<(String, String)> {
 fn desktop_env_value(name: &str) -> Option<String> {
     for pid in desktop_candidate_pids() {
         let path = PathBuf::from("/proc").join(pid).join("environ");
-        let bytes = std::fs::read(path).ok()?;
+        let Ok(bytes) = std::fs::read(path) else {
+            continue;
+        };
         for entry in bytes.split(|byte| *byte == 0) {
-            let entry = std::str::from_utf8(entry).ok()?;
-            let (key, value) = entry.split_once('=')?;
+            let Ok(entry) = std::str::from_utf8(entry) else {
+                continue;
+            };
+            let Some((key, value)) = entry.split_once('=') else {
+                continue;
+            };
             if key == name && !value.is_empty() {
                 return Some(value.to_string());
             }
@@ -296,10 +308,27 @@ fn windows_command_candidates(program: &str) -> Vec<String> {
     candidates
 }
 
+#[cfg(target_os = "windows")]
+fn is_runnable_file(path: &Path) -> bool {
+    path.is_file()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_runnable_file(path: &Path) -> bool {
+    path.is_file()
+        && path
+            .metadata()
+            .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Write;
+    #[cfg(not(target_os = "windows"))]
+    use std::os::unix::fs::PermissionsExt;
 
+    use super::command_path_in_path;
     use super::png_dimensions;
 
     #[test]
@@ -322,6 +351,36 @@ mod tests {
         file.flush().unwrap();
 
         assert_eq!(png_dimensions(file.path()), None);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn unix_command_lookup_ignores_non_executable_files() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let command = dir.path().join("not-executable");
+        std::fs::write(&command, b"#!/bin/sh\n").expect("write command");
+        std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o644))
+            .expect("set permissions");
+
+        assert_eq!(
+            command_path_in_path("not-executable", dir.path().as_os_str()),
+            None
+        );
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn unix_command_lookup_accepts_executable_files() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let command = dir.path().join("executable");
+        std::fs::write(&command, b"#!/bin/sh\n").expect("write command");
+        std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o755))
+            .expect("set permissions");
+
+        assert_eq!(
+            command_path_in_path("executable", dir.path().as_os_str()),
+            Some(command)
+        );
     }
 
     fn tempfile_file(prefix: &str) -> tempfile::NamedTempFile {
