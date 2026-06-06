@@ -1,12 +1,12 @@
 param(
     [string]$LiveScript = "$env:TEMP\windows-live-capture-test.ps1",
-    [string]$AppshotsExe = "appshots.exe",
-    [string]$OutRoot = "$env:TEMP\appshots-live-test",
+    [string]$ClocheExe = "cloche.exe",
+    [string]$OutRoot = "$env:TEMP\cloche-live-test",
     [ValidateSet("active", "screen", "window")]
     [string]$Target = "active",
     [int]$WindowWidth = 680,
     [int]$WindowHeight = 460,
-    [string]$TaskName = "AppShotsLiveTest"
+    [string]$TaskName = "ClocheLiveTest"
 )
 
 $ErrorActionPreference = 'Continue'
@@ -14,9 +14,9 @@ $ErrorActionPreference = 'Continue'
 schtasks.exe /Delete /TN $TaskName /F 2>$null | Out-Null
 
 $start = (Get-Date).AddMinutes(1).ToString("HH:mm")
-$wrapper = Join-Path $env:TEMP "appshots-live-task.ps1"
+$wrapper = Join-Path $env:TEMP "cloche-live-task.ps1"
 @"
-& '$LiveScript' -AppshotsExe '$AppshotsExe' -OutRoot '$OutRoot' -Target '$Target' -StyleSeed 424242 -WindowWidth $WindowWidth -WindowHeight $WindowHeight -LaunchNotepad
+& '$LiveScript' -ClocheExe '$ClocheExe' -OutRoot '$OutRoot' -Target '$Target' -StyleSeed 424242 -WindowWidth $WindowWidth -WindowHeight $WindowHeight -LaunchNotepad
 exit `$LASTEXITCODE
 "@ | Set-Content -Path $wrapper -Encoding UTF8
 

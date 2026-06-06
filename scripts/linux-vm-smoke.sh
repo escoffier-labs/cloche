@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Run appshots smoke checks over SSH against a Linux VM.
+Run Cloche smoke checks over SSH against a Linux VM.
 
 Usage:
   scripts/linux-vm-smoke.sh user@host [options]
@@ -19,7 +19,7 @@ USAGE
 }
 
 target=""
-artifact_url="https://github.com/solomonneas/appshots/releases/download/v0.1.0/appshots-0.1.0-x86_64-unknown-linux-gnu.tar.gz"
+artifact_url="https://github.com/escoffier-labs/cloche/releases/download/v0.1.0/cloche-0.1.0-x86_64-unknown-linux-gnu.tar.gz"
 ssh_options=()
 
 while [[ $# -gt 0 ]]; do
@@ -66,22 +66,22 @@ need() {
 need curl
 need tar
 
-curl -fL "$ARTIFACT_URL" -o appshots.tar.gz
-tar -xzf appshots.tar.gz
-bin="$(find . -type f -name appshots -perm -111 | head -n 1)"
+curl -fL "$ARTIFACT_URL" -o cloche.tar.gz
+tar -xzf cloche.tar.gz
+bin="$(find . -type f -name cloche -perm -111 | head -n 1)"
 test -n "$bin"
 
-"$bin" --help >/tmp/appshots-help.txt
-"$bin" schema --compact >/tmp/appshots-schema.json
+"$bin" --help >/tmp/cloche-help.txt
+"$bin" schema --compact >/tmp/cloche-schema.json
 
 set +e
-"$bin" doctor --format json >/tmp/appshots-doctor.json
+"$bin" doctor --format json >/tmp/cloche-doctor.json
 doctor_status=$?
 set -e
 
-test -s /tmp/appshots-help.txt
-test -s /tmp/appshots-schema.json
-test -s /tmp/appshots-doctor.json
+test -s /tmp/cloche-help.txt
+test -s /tmp/cloche-schema.json
+test -s /tmp/cloche-doctor.json
 
 case "$doctor_status" in
   0|1) ;;
@@ -91,9 +91,9 @@ case "$doctor_status" in
     ;;
 esac
 
-printf 'appshots smoke ok\n'
+printf 'cloche smoke ok\n'
 printf 'doctor exit status: %s\n' "$doctor_status"
-head -20 /tmp/appshots-doctor.json
+head -20 /tmp/cloche-doctor.json
 REMOTE
 )
 

@@ -1,14 +1,14 @@
 [package]
-name = "appshots"
+name = "cloche"
 version = "0.1.0"
 edition = "2024"
-description = "Agent-neutral app screenshot capture CLI"
+description = "Open-source desktop capture CLI for screenshots, short reels, and agents"
 license = "Apache-2.0"
-repository = "https://github.com/solomonneas/appshots"
-homepage = "https://github.com/solomonneas/appshots"
+repository = "https://github.com/escoffier-labs/cloche"
+homepage = "https://github.com/escoffier-labs/cloche"
 readme = "README.md"
 rust-version = "1.85"
-keywords = ["screenshot", "linux", "cli", "mcp", "agents"]
+keywords = ["screenshot", "capture", "linux", "cli", "agents"]
 categories = ["command-line-utilities"]
 include = [
     "/Cargo.lock",
@@ -23,8 +23,12 @@ include = [
 ]
 
 [[bin]]
-name = "appshots"
+name = "cloche"
 path = "src/main.rs"
+
+[[bin]]
+name = "appshots"
+path = "src/bin/appshots.rs"
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }

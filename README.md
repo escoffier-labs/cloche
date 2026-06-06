@@ -1,12 +1,12 @@
-<h1 align="center">App Shots</h1>
+<h1 align="center">Cloche</h1>
 
 <p align="center">
-  <em>Linux-first app screenshot capture for agents, scripts, and local workflows.</em>
+  <em>Open-source desktop capture for polished shots, short reels, and agent workflows.</em>
 </p>
 
 <p align="center">
-  <a href="https://github.com/solomonneas/appshots/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/solomonneas/appshots/ci.yml?branch=master&style=for-the-badge&label=CI&logo=githubactions&logoColor=white" alt="CI status"></a>
-  <a href="https://github.com/solomonneas/appshots/releases"><img src="https://img.shields.io/github/v/release/solomonneas/appshots?include_prereleases&style=for-the-badge&label=release" alt="GitHub release"></a>
+  <a href="https://github.com/escoffier-labs/cloche/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/escoffier-labs/cloche/ci.yml?branch=master&style=for-the-badge&label=CI&logo=githubactions&logoColor=white" alt="CI status"></a>
+  <a href="https://github.com/escoffier-labs/cloche/releases"><img src="https://img.shields.io/github/v/release/escoffier-labs/cloche?include_prereleases&style=for-the-badge&label=release" alt="GitHub release"></a>
   <img src="https://img.shields.io/badge/Rust-2024-b7410e?style=for-the-badge&logo=rust&logoColor=white" alt="Rust 2024">
   <img src="https://img.shields.io/badge/platform-Linux_first-2563eb?style=for-the-badge&logo=linux&logoColor=white" alt="Linux first">
   <img src="https://img.shields.io/badge/Windows-supported-0078d4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows supported">
@@ -15,29 +15,40 @@
 </p>
 
 <p align="center">
-  <img src="docs/appshot-settings-random-card-2026-05-31.png" alt="Linux Settings appshot card" width="720">
+  <img src="docs/appshot-settings-random-card-2026-05-31.png" alt="Cloche shot of Linux Settings" width="720">
 </p>
 
 <p align="center">
-  <img src="docs/appshot-calculator-card-2026-05-31.png" alt="Linux Calculator appshot card" width="420">
+  <img src="docs/appshot-calculator-card-2026-05-31.png" alt="Cloche shot of Linux Calculator" width="420">
 </p>
 
-`appshots` is a Linux-first, agent-neutral app screenshot capture CLI. It captures the active app or window, writes a PNG plus metadata, and prints stable JSON so any shell-capable agent, script, or human workflow can use the same command.
+Cloche is an open-source desktop capture tool for people and agents. It captures the active app or window, writes polished artifacts plus metadata, and prints stable JSON so scripts, local tools, and AI agents can all use the same command.
 
-It was built for Linux users who want Appshot-style desktop context without waiting for native Codex screenshot capture support on Linux. It is not Codex-only. Codex app-server clients can consume the payload helper, but the core tool works as a normal standalone CLI and optional MCP server.
+The name comes from the glass or silver dome used to present something cleanly. Cloche lifts what is on your screen, frames it, and makes it ready to share.
 
-The examples above are real App Shots artifacts. The card image is presentation polish for sharing or attaching. The raw capture and machine-readable metadata are still available in the same output directory.
+The first production mode is **Shots**: polished screenshots with raw files, metadata, optional text extraction, and gallery helpers. The roadmap adds **Reels** for short screen recordings, then **GIF export** for lightweight loops.
 
-## What It Does
+This repo started as `appshots`. The `appshots` binary remains as a compatibility alias while `cloche` becomes the primary command.
+
+## Current Capabilities
 
 - Captures the active window, a selected window, or the full screen.
-- Writes `shot.png`, `metadata.json`, optional `text.txt`, and a polished `shot-card.png` presentation image.
+- Writes `shot.png`, `metadata.json`, optional `text.txt`, and a polished `shot-card.png`.
 - Emits stable JSON on stdout for agents and automation.
 - Extracts best-effort visible or accessible app text when the OS exposes it.
 - Provides `gallery`, `latest`, and `preview` helpers for capture history.
-- Runs directly as a CLI, or as a small stdio MCP server through `appshots mcp`.
+- Runs directly as a CLI, or as a small stdio MCP server through `cloche mcp`.
+- Keeps `appshots` as a compatibility command during the rename.
 
-## Why
+## Modes
+
+**Shots** are available now. A Shot is a still capture with raw and presentation images, metadata, and optional extracted text.
+
+**Reels** are planned next. A Reel will be a short desktop recording with the same Cloche presentation system, cursor emphasis, captions, and stable metadata. The existing Appreels prototype is the starting point for this mode.
+
+**GIF export** is planned after Reels. GIFs will be generated from finished Reels as a delivery format, not recorded as the primary source format.
+
+## Why Cloche Exists
 
 OpenAI documents Appshots as a macOS app feature for Codex. The Codex repository can already resume threads that contain local images through app-server v2 `turn/start` input:
 
@@ -45,14 +56,14 @@ OpenAI documents Appshots as a macOS app feature for Codex. The Codex repository
 { "type": "localImage", "path": "/absolute/path/to/shot.png", "detail": "high" }
 ```
 
-Linux users still need a reliable way to create those captures. `appshots` fills that capture side while staying independent of any one agent. Use it with Codex, OpenClaw, Claude Code, Hermes, a local MCP client, or a plain shell script.
+Linux and Windows users still need a reliable way to create those captures from a normal CLI. Cloche fills that capture side while staying independent of any one agent stack. Use it with Codex, OpenClaw, Claude Code, Hermes, a local MCP client, or a plain shell script.
 
 Reference: <https://developers.openai.com/codex/appshots>
 
 ## Install
 
 ```bash
-cargo install --path .
+cargo install --path . --bins
 ```
 
 Or use the install script:
@@ -69,59 +80,61 @@ powershell -ExecutionPolicy Bypass -File scripts/install.ps1
 
 ## Quick Start
 
-Capture the active app or window:
+Capture the active app or window as a Shot:
 
 ```bash
-appshots capture --target active --out-dir /tmp/appshot-$(date +%s) --format json
+cloche capture --target active --out-dir /tmp/cloche-shot-$(date +%s) --format json
 ```
 
 Preview the latest capture:
 
 ```bash
-appshots preview
+cloche preview
 ```
 
-Create a self-contained HTML gallery:
+Create a self-contained HTML gallery of recent Shots:
 
 ```bash
-appshots gallery --root /tmp --html /tmp/appshots.html --title "My Shots" --open
+cloche gallery --root /tmp --html /tmp/cloche.html --title "My Shots" --open
 ```
 
-Generate a Codex `turn/start` payload from a capture:
+Generate a Codex `turn/start` payload from a Shot:
 
 ```bash
-appshots codex-payload --thread-id "$THREAD_ID" /tmp/appshot-123
+cloche codex-payload --thread-id "$THREAD_ID" /tmp/cloche-shot-123
 ```
 
-## Commands
+## Command Reference
 
 ```bash
-appshots doctor --format json
-appshots list-windows --format json
-appshots capture --target active --presentation both --out-dir /tmp/appshot --format json
-appshots capture --target active --style-seed 12345 --out-dir /tmp/appshot --format json
-appshots capture --target screen --out-dir /tmp/appshot --format json
-appshots capture --target window --title Firefox --out-dir /tmp/appshot --format json
-appshots gallery --limit 10
-appshots gallery --root /tmp --html /tmp/appshots.html --title "My Shots" --open
-appshots latest
-appshots preview
-appshots open /tmp/appshot
-appshots schema
-appshots codex-payload --thread-id THREAD_ID /tmp/appshot
-appshots mcp
+cloche doctor --format json
+cloche list-windows --format json
+cloche capture --target active --presentation both --out-dir /tmp/cloche-shot --format json
+cloche capture --target active --style-seed 12345 --out-dir /tmp/cloche-shot --format json
+cloche capture --target screen --out-dir /tmp/cloche-shot --format json
+cloche capture --target window --title Firefox --out-dir /tmp/cloche-shot --format json
+cloche gallery --limit 10
+cloche gallery --root /tmp --html /tmp/cloche.html --title "My Shots" --open
+cloche latest
+cloche preview
+cloche open /tmp/cloche-shot
+cloche schema
+cloche codex-payload --thread-id THREAD_ID /tmp/cloche-shot
+cloche mcp
 ```
+
+The old `appshots` command remains as an alias for the same code path.
 
 ## Output Files
 
-Each successful capture directory contains:
+Each successful Shot directory contains:
 
 - `shot.png`, the raw captured image.
 - `shot-card.png`, a presentation image with background cleanup, rounded corners, padding, and a soft shadow.
 - `metadata.json`, the same JSON object printed to stdout.
 - `text.txt`, optional best-effort accessible text from the focused app.
 
-Capture exits with `0` only when a raw image was written. Text extraction and presentation-image failures are warnings because accessibility support and desktop compositing vary by toolkit, app, desktop environment, and OS. `--target screen` exists as a fallback and debugging mode, but `--target active` is the Appshots-compatible default.
+Capture exits with `0` only when a raw image was written. Text extraction and presentation-image failures are warnings because accessibility support and desktop compositing vary by toolkit, app, desktop environment, and OS. `--target screen` exists as a fallback and debugging mode. `--target active` is the default.
 
 Use `--presentation raw`, `--presentation card`, or `--presentation both` to control output image generation. Use `--style-seed <number>` to reproduce a randomized card style exactly.
 
@@ -130,24 +143,34 @@ Use `--presentation raw`, `--presentation card`, or `--presentation both` to con
 Any shell-capable agent can call:
 
 ```bash
-appshots capture --target active --out-dir /tmp/appshot-$(date +%s) --format json
+cloche capture --target active --out-dir /tmp/cloche-shot-$(date +%s) --format json
 ```
 
-Then parse `image.path` from stdout or read `metadata.json`.
+Then parse `image.path` from stdout or read the generated `metadata.json`.
 
 Codex app-server clients can turn a capture into a ready `turn/start` payload:
 
 ```bash
-appshots codex-payload --thread-id "$THREAD_ID" /tmp/appshot-123
+cloche codex-payload --thread-id "$THREAD_ID" /tmp/cloche-shot-123
 ```
 
-Other agents should treat `appshots` as a normal subprocess tool. The core command has no MCP dependency, desktop-app dependency, or agent-specific runtime dependency.
+Other agents should treat Cloche as a normal subprocess tool. The core command has no MCP dependency, desktop-app dependency, or agent-specific runtime dependency.
 
 ## MCP Server
 
-`appshots mcp` runs a minimal stdio MCP server for clients that prefer the Model Context Protocol over direct subprocess calls. It speaks newline-delimited JSON-RPC 2.0 on stdin/stdout and exposes `capture`, `list_windows`, `doctor`, `latest`, and `gallery` as tools. Each tool call shells out to the same binary, so the JSON contract is identical to the CLI.
+`cloche mcp` runs a minimal stdio MCP server for clients that prefer the Model Context Protocol over direct subprocess calls. It speaks newline-delimited JSON-RPC 2.0 on stdin/stdout and exposes `capture`, `list_windows`, `doctor`, `latest`, and `gallery` as tools. Each tool call shells out to the same binary, so the JSON contract is identical to the CLI.
 
 Register it like any stdio MCP server:
+
+```json
+{
+  "mcpServers": {
+    "cloche": { "command": "cloche", "args": ["mcp"] }
+  }
+}
+```
+
+Compatibility config:
 
 ```json
 {
@@ -161,10 +184,10 @@ Register it like any stdio MCP server:
 
 - X11 active/window capture uses `xdotool`/`wmctrl` for window metadata and ImageMagick `import` for PNG capture.
 - Wayland wlroots screen capture uses `grim`.
-- GNOME/KDE Wayland may block silent active-window capture by design. Use `--target screen` or run `appshots doctor --format json` for diagnostics.
+- GNOME/KDE Wayland may block silent active-window capture by design. Use `--target screen` or run `cloche doctor --format json` for diagnostics.
 - Text extraction is best-effort through AT-SPI using Python GI when available.
 
-If you are invoking `appshots` from SSH, a TTY, or an agent process that did not inherit the desktop environment, `appshots` will try to discover the live desktop variables from desktop processes. On GNOME X11 they usually look like:
+If you are invoking Cloche from SSH, a TTY, or an agent process that did not inherit the desktop environment, Cloche will try to discover the live desktop variables from desktop processes. On GNOME X11 they usually look like:
 
 ```bash
 export DISPLAY=:1
@@ -188,7 +211,7 @@ tr '\0' '\n' </proc/$(pgrep -u "$(id -u)" -n gnome-shell)/environ | grep -E '^(D
 
 ## Gallery HTML Export
 
-`appshots gallery --html <path>` writes a single self-contained HTML file with each capture's image embedded inline, so the result can be shared without any companion files. Combine with `--root`, `--limit`, `--title`, and `--open`. The JSON output gains an `htmlPath` field pointing at the written file.
+`cloche gallery --html <path>` writes a single self-contained HTML file with each capture's image embedded inline, so the result can be shared without any companion files. Combine with `--root`, `--limit`, `--title`, and `--open`. The JSON output gains an `htmlPath` field pointing at the written file.
 
 ## Release Packaging
 

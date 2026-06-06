@@ -30,9 +30,9 @@ Running log of decisions and tradeoffs not captured in commit messages or the sp
 
 ## MCP wrapper (2026-06-01)
 
-- New `src/mcp.rs`: a minimal stdio JSON-RPC 2.0 server (`appshots mcp`) implementing
+- New `src/mcp.rs`: a minimal stdio JSON-RPC 2.0 server (`cloche mcp`) implementing
   `initialize`, `ping`, `tools/list`, `tools/call`, and notification handling.
-- Decision: tool calls shell out to the appshots binary itself (`current_exe`) rather
+- Decision: tool calls shell out to the Cloche binary itself (`current_exe`) rather
   than calling internal functions. This keeps the capture contract in exactly one
   place, guarantees byte-identical output to the CLI, and matches the roadmap phrasing
   ("MCP wrapper around the CLI contract"). Tradeoff: one subprocess per tool call;

@@ -14,7 +14,7 @@ pub struct CodexPayloadArgs {
     pub thread_id: String,
     #[arg(value_name = "CAPTURE_DIR")]
     pub capture_dir: PathBuf,
-    #[arg(long, default_value = "Appshot attached.")]
+    #[arg(long, default_value = "Cloche shot attached.")]
     pub message: String,
     #[arg(long, value_enum, default_value = "high")]
     pub detail: ImageDetail,

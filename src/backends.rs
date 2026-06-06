@@ -245,7 +245,7 @@ fn capture_active(output_path: &Path) -> Result<CaptureSuccess, AppError> {
     }
 
     Err(AppError::Message(
-        "no active-window backend is available; run `appshots doctor --format json`".to_string(),
+        "no active-window backend is available; run `cloche doctor --format json`".to_string(),
     ))
 }
 
@@ -495,7 +495,7 @@ fn session_info() -> SessionInfo {
 
 pub fn default_output_dir() -> PathBuf {
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
-    PathBuf::from(format!("appshot-{stamp}"))
+    PathBuf::from(format!("cloche-shot-{stamp}"))
 }
 
 #[cfg(test)]

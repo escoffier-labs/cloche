@@ -22,8 +22,8 @@ use crate::util;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Parser)]
-#[command(name = "appshots")]
-#[command(about = "Agent-neutral app screenshot capture CLI")]
+#[command(name = "cloche")]
+#[command(about = "Open-source desktop capture CLI")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -89,7 +89,7 @@ pub struct GalleryArgs {
     #[arg(long)]
     pub html: Option<PathBuf>,
     /// HTML page title (used with --html).
-    #[arg(long, default_value = "App Shots")]
+    #[arg(long, default_value = "Cloche Shots")]
     pub title: String,
     /// Open the exported HTML gallery after writing it (requires --html).
     #[arg(long)]
@@ -330,7 +330,7 @@ pub fn preview(args: PreviewArgs) -> Result<ExitCode, Box<dyn std::error::Error>
             .into_iter()
             .next()
             .map(|capture| capture.output_dir)
-            .ok_or("no appshot captures found")?,
+            .ok_or("no Cloche captures found")?,
     };
     let metadata = read_metadata(&capture_dir)?;
     let path = if args.raw {
@@ -416,7 +416,7 @@ fn collect_captures(root: &Path, captures: &mut Vec<CaptureSummary>) {
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        if !name.starts_with("appshot") {
+        if !name.starts_with("cloche-shot") && !name.starts_with("appshot") {
             continue;
         }
         if let Ok(metadata) = read_metadata(&path) {

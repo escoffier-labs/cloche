@@ -64,7 +64,7 @@ pub fn dispatch(
             json!({
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "appshots", "version": VERSION }
+                "serverInfo": { "name": "cloche", "version": VERSION }
             }),
         ),
         "ping" => result_response(id, json!({})),
@@ -110,7 +110,7 @@ fn tool_definitions() -> Value {
     json!([
         {
             "name": "capture",
-            "description": "Capture an app/window screenshot and return the appshots JSON result.",
+            "description": "Capture an app/window screenshot and return the Cloche JSON result.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -153,7 +153,7 @@ fn tool_definitions() -> Value {
     ])
 }
 
-/// Translate a tool call into appshots CLI arguments. Pure and testable.
+/// Translate a tool call into Cloche CLI arguments. Pure and testable.
 pub fn tool_command_args(name: &str, arguments: &Value) -> Result<Vec<String>, String> {
     let mut args = Vec::new();
     match name {
@@ -245,7 +245,7 @@ fn run_tool_via_subprocess(name: &str, arguments: &Value) -> ToolRun {
         Ok(exe) => exe,
         Err(err) => {
             return ToolRun {
-                text: format!("failed to locate appshots binary: {err}"),
+                text: format!("failed to locate Cloche binary: {err}"),
                 is_error: true,
             };
         }
@@ -284,7 +284,7 @@ mod tests {
         let request = json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize" });
         let response = dispatch(&request, &mut never_called).expect("response");
         assert_eq!(response["result"]["protocolVersion"], PROTOCOL_VERSION);
-        assert_eq!(response["result"]["serverInfo"]["name"], "appshots");
+        assert_eq!(response["result"]["serverInfo"]["name"], "cloche");
         assert_eq!(response["id"], 1);
     }
 

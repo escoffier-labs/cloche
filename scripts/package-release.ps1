@@ -15,13 +15,14 @@ $Target = switch -Regex ($env:PROCESSOR_ARCHITECTURE) {
     default { 'x86_64-pc-windows-msvc' }
 }
 
-cargo build --release --bin appshots
+cargo build --release --bin cloche --bin appshots
 
-$Stage = Join-Path 'dist' "appshots-$Version-$Target"
+$Stage = Join-Path 'dist' "cloche-$Version-$Target"
 $Archive = "$Stage.zip"
 Remove-Item -Recurse -Force $Stage, $Archive -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 
+Copy-Item 'target/release/cloche.exe' (Join-Path $Stage 'cloche.exe')
 Copy-Item 'target/release/appshots.exe' (Join-Path $Stage 'appshots.exe')
 Copy-Item LICENSE, README.md, ROADMAP.md $Stage
 

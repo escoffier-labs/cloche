@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Create a disposable Proxmox VM for appshots Linux distro smoke tests.
+Create a disposable Proxmox VM for Cloche Linux distro smoke tests.
 
 Dry-run by default. Run this on a Proxmox VE host.
 
@@ -16,11 +16,11 @@ Options:
   --apply                 Run commands instead of printing them.
   --destroy               Stop and destroy the VM.
   --vmid ID               VMID to create or destroy. Default: 130.
-  --name NAME             VM name. Default: appshots-debian13-smoke.
+  --name NAME             VM name. Default: cloche-debian13-smoke.
   --storage STORAGE       Proxmox storage for disks/cloud-init. Default: local-lvm.
   --bridge BRIDGE         Network bridge. Default: vmbr0.
   --ssh-key PATH          SSH public key for cloud-init. Default: ~/.ssh/id_rsa.pub.
-  --ci-user USER          Cloud-init user. Default: appshots.
+  --ci-user USER          Cloud-init user. Default: cloche.
   --memory MiB            VM memory. Default: 2048.
   --cores N               VM CPU cores. Default: 2.
   --disk-size SIZE        Disk resize target. Default: 16G.
@@ -28,7 +28,7 @@ Options:
   --image-path PATH       Local image cache path.
 
 After the VM boots, find its IP from Proxmox or DHCP and run:
-  scripts/linux-vm-smoke.sh appshots@<ip-or-host>
+  scripts/linux-vm-smoke.sh cloche@<ip-or-host>
 
 References:
   Proxmox Cloud-Init Support: https://pve.proxmox.com/wiki/Cloud-Init_Support
@@ -38,11 +38,11 @@ USAGE
 apply=0
 destroy=0
 vmid=130
-name="appshots-debian13-smoke"
+name="cloche-debian13-smoke"
 storage="local-lvm"
 bridge="vmbr0"
 ssh_key="${HOME}/.ssh/id_rsa.pub"
-ci_user="appshots"
+ci_user="cloche"
 memory=2048
 cores=2
 disk_size="16G"

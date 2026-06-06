@@ -482,7 +482,7 @@ fn temporary_script_path() -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or_default();
-    std::env::temp_dir().join(format!("appshots-{stamp}.ps1"))
+    std::env::temp_dir().join(format!("cloche-{stamp}.ps1"))
 }
 
 #[allow(dead_code)]

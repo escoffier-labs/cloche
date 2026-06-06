@@ -30,7 +30,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: appshots-linux-x86_64
+          name: cloche-linux-x86_64
           path: dist/*.tar.gz
 
       - name: Publish GitHub release assets
@@ -60,7 +60,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: appshots-windows-x86_64
+          name: cloche-windows-x86_64
           path: dist/*.zip
 
       - name: Publish GitHub release assets

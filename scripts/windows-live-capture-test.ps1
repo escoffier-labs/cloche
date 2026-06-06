@@ -1,6 +1,6 @@
 param(
-    [string]$AppshotsExe = "appshots.exe",
-    [string]$OutRoot = "$env:TEMP\appshots-live-test",
+    [string]$ClocheExe = "cloche.exe",
+    [string]$OutRoot = "$env:TEMP\cloche-live-test",
     [ValidateSet("active", "screen", "window")]
     [string]$Target = "active",
     [int]$StyleSeed = 424242,
@@ -18,7 +18,7 @@ $process = $null
 if ($LaunchNotepad) {
     $samplePath = Join-Path $OutRoot "sample.txt"
     @"
-App Shots Windows capture test
+Cloche Windows capture test
 
 Target: Notepad
 Backend: Win32 PrintWindow
@@ -95,7 +95,7 @@ $captureArgs = @(
 if ($LaunchNotepad -and $Target -eq "window") {
     $captureArgs += @("--app", "notepad")
 }
-& $AppshotsExe @captureArgs *> (Join-Path $OutRoot "combined.log")
+& $ClocheExe @captureArgs *> (Join-Path $OutRoot "combined.log")
 $exitCode = $LASTEXITCODE
 $exitCode | Set-Content -Path (Join-Path $OutRoot "exit.txt")
 

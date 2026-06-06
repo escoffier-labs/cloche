@@ -17,13 +17,14 @@ case "$kernel:$arch" in
     ;;
 esac
 
-cargo build --release --bin appshots
+cargo build --release --bin cloche --bin appshots
 
-stage="dist/appshots-${version}-${target}"
+stage="dist/cloche-${version}-${target}"
 archive="${stage}.tar.gz"
 rm -rf "$stage" "$archive"
 mkdir -p "$stage"
 
+cp target/release/cloche "$stage/cloche"
 cp target/release/appshots "$stage/appshots"
 cp LICENSE README.md ROADMAP.md "$stage/"
 
