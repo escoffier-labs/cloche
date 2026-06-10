@@ -1,15 +1,13 @@
 # Repository Guidance
 
 ## Definition of Done
-Before reporting any change complete, run all three and confirm they pass:
+Before reporting any change complete, run the verification entrypoint and confirm it passes:
 
 ```
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
+./scripts/verify
 ```
 
-These are exactly what CI runs (`.github/workflows/ci.yml`, Linux and Windows). Clippy warnings fail the build. Report actual results. If any command fails, report the failure verbatim and do not claim success. Re-run all three after the final edit; earlier green runs do not count.
+It runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test`, in that order. These are exactly what CI runs (`.github/workflows/ci.yml`, Linux and Windows). Clippy warnings fail the build. Report actual results. If any command fails, report the failure verbatim and do not claim success. Re-run after the final edit; earlier green runs do not count.
 
 ## Project Shape
 - Cloche is a Rust CLI for desktop capture: polished screenshots (Shots), planned short recordings (Reels), and stable JSON output for scripts and agent workflows. The repo directory is still `appshots`; the project was rebranded to Cloche.
