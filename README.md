@@ -155,6 +155,8 @@ Capture exits with `0` only when a raw image was written. Text extraction and pr
 
 Use `--presentation raw`, `--presentation card`, or `--presentation both` to control output image generation. Use `--style-seed <number>` to reproduce a randomized card style exactly.
 
+`cloche polish` writes a single card PNG instead of a Shot directory: `<input>-card.png` next to the input by default, or the `--out <path>` you pass (it must end in `.png` because the card's rounded canvas corners need alpha). Its stdout JSON reports `input`, `card`, and `presentationStyle`.
+
 ## Agent Use
 
 Any shell-capable agent can call:
