@@ -662,6 +662,24 @@ mod tests {
     }
 
     #[test]
+    fn polish_accepts_jpeg_input() {
+        let dir = temp_dir("jpeg-input");
+        let input = dir.join("photo.jpg");
+        let image = image::RgbImage::from_pixel(96, 64, image::Rgb([120, 60, 30]));
+        image.save(&input).expect("write jpeg");
+        let result = run_polish(PolishArgs {
+            input,
+            out: None,
+            palette: None,
+            style_seed: Some(13),
+            format: OutputFormat::Json,
+        });
+        assert!(result.ok, "errors: {:?}", result.errors);
+        assert!(dir.join("photo-card.png").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn polish_reports_missing_input() {
         let dir = temp_dir("missing-input");
         let result = run_polish(PolishArgs {
