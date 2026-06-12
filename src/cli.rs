@@ -60,6 +60,7 @@ pub struct PolishArgs {
     /// Seed for deterministic styling.
     #[arg(long)]
     pub style_seed: Option<u64>,
+    /// Output format; only `json` exists today.
     #[arg(long, default_value = "json")]
     pub format: OutputFormat,
 }
@@ -86,18 +87,21 @@ pub struct CaptureArgs {
     pub presentation: PresentationMode,
     #[arg(long)]
     pub style_seed: Option<u64>,
+    /// Output format; only `json` exists today.
     #[arg(long, default_value = "json")]
     pub format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
 pub struct DoctorArgs {
+    /// Output format; only `json` exists today.
     #[arg(long, default_value = "json")]
     pub format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
 pub struct ListWindowsArgs {
+    /// Output format; only `json` exists today.
     #[arg(long, default_value = "json")]
     pub format: OutputFormat,
 }
@@ -108,6 +112,7 @@ pub struct GalleryArgs {
     pub limit: usize,
     #[arg(long)]
     pub root: Vec<PathBuf>,
+    /// Output format; only `json` exists today.
     #[arg(long, default_value = "json")]
     pub format: OutputFormat,
     /// Write a self-contained HTML gallery to this path.
@@ -125,6 +130,7 @@ pub struct GalleryArgs {
 pub struct LatestArgs {
     #[arg(long)]
     pub root: Vec<PathBuf>,
+    /// Output format; only `json` exists today.
     #[arg(long, default_value = "json")]
     pub format: OutputFormat,
 }
@@ -154,6 +160,8 @@ pub enum SchemaTarget {
     Polish,
 }
 
+/// Accepted for forward compatibility; every command prints JSON today, so
+/// the parsed value is not consulted anywhere yet.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum OutputFormat {
     Json,
@@ -164,17 +172,6 @@ pub enum PresentationMode {
     Raw,
     Card,
     Both,
-}
-
-impl std::str::FromStr for OutputFormat {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "json" => Ok(Self::Json),
-            _ => Err("only `json` is supported".to_string()),
-        }
-    }
 }
 
 pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
