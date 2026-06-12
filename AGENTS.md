@@ -10,8 +10,8 @@ Before reporting any change complete, run the verification entrypoint and confir
 It runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test`, in that order. These are exactly what CI runs (`.github/workflows/ci.yml`, Linux and Windows). Clippy warnings fail the build. Report actual results. If any command fails, report the failure verbatim and do not claim success. Re-run after the final edit; earlier green runs do not count.
 
 ## Project Shape
-- Cloche is a Rust CLI for desktop capture: polished screenshots (Shots), planned short recordings (Reels), and stable JSON output for scripts and agent workflows. The repo directory is still `appshots`; the project was rebranded to Cloche.
-- Two binaries share one code path: `cloche` (`src/main.rs`) is primary, `appshots` (`src/bin/appshots.rs`) is a compatibility alias. Both call `cloche::run()` from `src/lib.rs`. Keep the alias working until the rename in ROADMAP.md completes.
+- Cloche is a Rust CLI for desktop capture: polished screenshots (Shots), planned short recordings (Reels), and stable JSON output for scripts and agent workflows. The repo directory and crate are `cloche`; the project was rebranded from App Shots, and only the `appshots` binary remains from that era.
+- Two binaries share one code path: `cloche` (`src/main.rs`) is primary, `appshots` (`src/bin/appshots.rs`) is a compatibility alias. Both call `cloche::run()` from `src/lib.rs`. Keep the alias working while existing automation and MCP configs still reference it.
 - Layout: `src/cli.rs` (clap commands), `src/capture/` (Linux in `mod.rs`, Windows in `windows.rs`), `src/polish.rs` (shot-card rendering), `src/mcp.rs` (stdio MCP server), `src/html.rs` (gallery export), `src/codex.rs` (turn/start payloads), `src/contract.rs` (JSON output schema).
 - The MCP server shells out to `current_exe` so the CLI JSON contract stays the single source of truth. Do not refactor MCP to call internal functions directly.
 - Making a non-obvious tradeoff -> log it in `implementation-notes.md` in the same change.
