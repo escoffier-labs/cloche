@@ -25,12 +25,11 @@ GIF support is planned as an export target after Reels, not as the primary recor
 - Optional stdio MCP server (`cloche mcp`) wrapping the CLI contract.
 - Compatibility binary and MCP path through `appshots`.
 
-## Near Term: Rename And Repository Transition
+## Rename And Repository Transition (done)
 
-- Keep `cloche` as the primary binary/package name.
+The rebrand shipped: `cloche` is the primary binary/package name, the repository lives at `escoffier-labs/cloche`, and badges, install scripts, package archives, and smoke scripts all prefer Cloche. Two compatibility items remain live:
+
 - Keep `appshots` as a compatibility binary until existing automation, docs, release assets, and downstream MCP configs have moved.
-- Move the GitHub repository to Escoffier Labs after explicit transfer approval.
-- Update release names, badges, install scripts, package archives, and smoke scripts to prefer Cloche.
 - Keep the old Appshots context in docs only where it explains compatibility or Codex's documented Appshots feature.
 
 ## Next: Reels Mode
