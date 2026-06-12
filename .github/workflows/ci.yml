@@ -41,16 +41,16 @@ jobs:
         run: cargo test
 
   msrv:
-    name: MSRV (1.85)
+    name: MSRV (1.88)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Install Rust 1.85
+      - name: Install Rust 1.88
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.85"
+          toolchain: "1.88"
 
       - name: Check
         run: cargo check --all-targets

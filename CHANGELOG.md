@@ -14,7 +14,8 @@ All notable changes to this project are documented here. The format follows
   `--style-seed`, and `--out` controls.
 - `schema --for polish` exposes the polish JSON contract alongside the capture
   contract.
-- MSRV (1.85) check job in CI.
+- MSRV check job in CI; the supported minimum Rust is documented as 1.88
+  (required by the image crate), correcting the previously advertised 1.85.
 - Unit coverage for the Codex `turn/start` payload contract and the text
   persistence path.
 
