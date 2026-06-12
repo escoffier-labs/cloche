@@ -126,6 +126,34 @@ if ($items.Count -eq 0) { exit 3 }
 $items -join "`n"
 "#;
 
+/// Shared tail of both extractors: trim, treat whitespace-only as empty,
+/// persist `text.txt`, and build the contract info. Pure apart from the file
+/// write, so it carries the unit tests for this module.
+fn store_text(
+    raw: &str,
+    output_dir: &Path,
+    source: &'static str,
+    empty_warning: &str,
+    warnings: &mut Vec<String>,
+) -> TextInfo {
+    let text = raw.trim();
+    if text.is_empty() {
+        warnings.push(empty_warning.to_string());
+        return TextInfo::default();
+    }
+    let path = output_dir.join("text.txt");
+    if let Err(err) = util::write(&path, text.as_bytes()) {
+        warnings.push(format!("Captured text could not be written: {err}"));
+        return TextInfo::default();
+    }
+    TextInfo {
+        available: true,
+        path: Some(util::canonical_or_original(&path)),
+        bytes: text.len() as u64,
+        source: Some(source.to_string()),
+    }
+}
+
 #[cfg(not(target_os = "windows"))]
 pub fn extract(output_dir: &Path, warnings: &mut Vec<String>) -> TextInfo {
     if !util::has_command("python3") {
@@ -161,24 +189,13 @@ pub fn extract(output_dir: &Path, warnings: &mut Vec<String>) -> TextInfo {
         return TextInfo::default();
     }
 
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if text.is_empty() {
-        warnings.push("AT-SPI returned no focused text.".to_string());
-        return TextInfo::default();
-    }
-
-    let path = output_dir.join("text.txt");
-    if let Err(err) = util::write(&path, text.as_bytes()) {
-        warnings.push(format!("Captured text could not be written: {err}"));
-        return TextInfo::default();
-    }
-
-    TextInfo {
-        available: true,
-        path: Some(util::canonical_or_original(&path)),
-        bytes: text.len() as u64,
-        source: Some("at-spi".to_string()),
-    }
+    store_text(
+        &String::from_utf8_lossy(&output.stdout),
+        output_dir,
+        "at-spi",
+        "AT-SPI returned no focused text.",
+        warnings,
+    )
 }
 
 #[cfg(target_os = "windows")]
@@ -189,28 +206,77 @@ pub fn extract(output_dir: &Path, warnings: &mut Vec<String>) -> TextInfo {
     }
 
     let text = match crate::capture::windows::run_powershell(UI_AUTOMATION_SCRIPT, &[]) {
-        Ok(text) => text.trim().to_string(),
+        Ok(text) => text,
         Err(err) => {
             warnings.push(format!("UI Automation text extraction failed: {err}"));
             return TextInfo::default();
         }
     };
 
-    if text.is_empty() {
-        warnings.push("UI Automation returned no focused text.".to_string());
-        return TextInfo::default();
+    store_text(
+        &text,
+        output_dir,
+        "ui-automation",
+        "UI Automation returned no focused text.",
+        warnings,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn temp_dir(label: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("cloche-text-test-{}-{label}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
     }
 
-    let path = output_dir.join("text.txt");
-    if let Err(err) = util::write(&path, text.as_bytes()) {
-        warnings.push(format!("Captured text could not be written: {err}"));
-        return TextInfo::default();
+    #[test]
+    fn store_text_writes_file_and_reports_info() {
+        let dir = temp_dir("store");
+        let mut warnings = Vec::new();
+        let info = store_text("Visible label", &dir, "at-spi", "empty", &mut warnings);
+        assert!(info.available);
+        assert_eq!(info.bytes, "Visible label".len() as u64);
+        assert_eq!(info.source.as_deref(), Some("at-spi"));
+        let path = info.path.expect("path");
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read back"),
+            "Visible label"
+        );
+        assert!(warnings.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
-    TextInfo {
-        available: true,
-        path: Some(util::canonical_or_original(&path)),
-        bytes: text.len() as u64,
-        source: Some("ui-automation".to_string()),
+    #[test]
+    fn store_text_trims_and_treats_whitespace_as_empty() {
+        let dir = temp_dir("empty");
+        let mut warnings = Vec::new();
+        let info = store_text(
+            "  \n\t ",
+            &dir,
+            "at-spi",
+            "nothing extracted",
+            &mut warnings,
+        );
+        assert!(!info.available);
+        assert!(info.path.is_none());
+        assert_eq!(warnings, vec!["nothing extracted".to_string()]);
+        assert!(!dir.join("text.txt").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn store_text_reports_unwritable_output_dir() {
+        let dir = temp_dir("unwritable").join("missing-subdir");
+        let mut warnings = Vec::new();
+        let info = store_text("text", &dir, "at-spi", "empty", &mut warnings);
+        assert!(!info.available);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("could not be written"));
     }
 }
