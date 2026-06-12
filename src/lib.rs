@@ -1,5 +1,6 @@
 mod backends;
 mod capture;
+mod captures;
 mod cli;
 mod codex;
 mod contract;

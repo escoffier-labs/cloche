@@ -12,7 +12,7 @@ It runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `c
 ## Project Shape
 - Cloche is a Rust CLI for desktop capture: polished screenshots (Shots), planned short recordings (Reels), and stable JSON output for scripts and agent workflows. The repo directory and crate are `cloche`; the project was rebranded from App Shots, and only the `appshots` binary remains from that era.
 - Two binaries share one code path: `cloche` (`src/main.rs`) is primary, `appshots` (`src/bin/appshots.rs`) is a compatibility alias. Both call `cloche::run()` from `src/lib.rs`. Keep the alias working while existing automation and MCP configs still reference it.
-- Layout: `src/cli.rs` (clap commands), `src/capture/` (Linux in `mod.rs`, Windows in `windows.rs`), `src/polish.rs` (shot-card rendering), `src/mcp.rs` (stdio MCP server), `src/html.rs` (gallery export), `src/codex.rs` (turn/start payloads), `src/contract.rs` (JSON output schema).
+- Layout: `src/cli.rs` (clap commands), `src/capture/` (Linux in `mod.rs`, Windows in `windows.rs`), `src/captures.rs` (on-disk capture discovery for gallery/latest/preview), `src/polish.rs` (shot-card rendering), `src/mcp.rs` (stdio MCP server), `src/html.rs` (gallery export), `src/codex.rs` (turn/start payloads), `src/contract.rs` (JSON output schema).
 - The MCP server shells out to `current_exe` so the CLI JSON contract stays the single source of truth. Do not refactor MCP to call internal functions directly.
 - Making a non-obvious tradeoff -> log it in `implementation-notes.md` in the same change.
 - Tempted to add a dependency -> don't. Hand-roll small helpers instead (the base64 encoder in `html.rs` is the precedent). If a crate is unavoidable, use `default-features = false` and justify it.
