@@ -141,8 +141,17 @@ pub struct PreviewArgs {
 
 #[derive(Debug, Args)]
 pub struct SchemaArgs {
+    /// Which JSON contract to print.
+    #[arg(long = "for", value_enum, default_value = "capture")]
+    pub contract: SchemaTarget,
     #[arg(long)]
     pub compact: bool,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum SchemaTarget {
+    Capture,
+    Polish,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -460,13 +469,21 @@ pub fn preview(args: PreviewArgs) -> Result<ExitCode, Box<dyn std::error::Error>
 }
 
 pub fn schema(args: SchemaArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
-    let schema = schema_for!(AppshotResult);
+    let schema = schema_value(args.contract);
     if args.compact {
         println!("{}", serde_json::to_string(&schema)?);
     } else {
         println!("{}", serde_json::to_string_pretty(&schema)?);
     }
     Ok(ExitCode::SUCCESS)
+}
+
+fn schema_value(target: SchemaTarget) -> serde_json::Value {
+    let schema = match target {
+        SchemaTarget::Capture => schema_for!(AppshotResult),
+        SchemaTarget::Polish => schema_for!(crate::contract::PolishResult),
+    };
+    serde_json::to_value(schema).expect("schema serializes")
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -685,6 +702,24 @@ mod tests {
         assert!(!result.ok);
         assert!(result.errors.iter().any(|err| err.contains(".png")));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn schema_for_capture_describes_the_capture_contract() {
+        let value = schema_value(SchemaTarget::Capture);
+        let properties = value["properties"].as_object().expect("properties");
+        assert!(properties.contains_key("outputDir"));
+        assert!(properties.contains_key("backend"));
+        assert!(!properties.contains_key("card"));
+    }
+
+    #[test]
+    fn schema_for_polish_describes_the_polish_contract() {
+        let value = schema_value(SchemaTarget::Polish);
+        let properties = value["properties"].as_object().expect("properties");
+        assert!(properties.contains_key("card"));
+        assert!(properties.contains_key("presentationStyle"));
+        assert!(!properties.contains_key("backend"));
     }
 
     #[test]

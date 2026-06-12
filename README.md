@@ -136,6 +136,7 @@ cloche latest
 cloche preview
 cloche open /tmp/cloche-shot
 cloche schema
+cloche schema --for polish
 cloche codex-payload --thread-id THREAD_ID /tmp/cloche-shot
 cloche mcp
 ```
