@@ -26,6 +26,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Parser)]
 #[command(name = "cloche")]
+#[command(version)]
 #[command(about = "Open-source desktop capture CLI")]
 pub struct Cli {
     #[command(subcommand)]
