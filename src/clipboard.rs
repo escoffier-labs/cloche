@@ -4,6 +4,7 @@
 
 use std::path::Path;
 
+#[cfg(not(target_os = "windows"))]
 use crate::util;
 
 /// Copy a PNG file to the clipboard. Failures are returned as strings so the
