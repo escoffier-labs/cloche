@@ -91,6 +91,10 @@ pub struct CaptureArgs {
     pub presentation: PresentationMode,
     #[arg(long)]
     pub style_seed: Option<u64>,
+    /// Copy the card (or the raw shot with --presentation raw) to the
+    /// clipboard after capture.
+    #[arg(long)]
+    pub clipboard: bool,
     /// Output format; only `json` exists today.
     #[arg(long, default_value = "json")]
     pub format: OutputFormat,
@@ -248,6 +252,18 @@ pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>
     } else {
         Default::default()
     };
+
+    if args.clipboard {
+        let clipboard_image = presentation_image.as_ref().or(image.as_ref());
+        match clipboard_image {
+            Some(info) => {
+                if let Err(err) = crate::clipboard::copy_png(&info.path) {
+                    warnings.push(format!("Clipboard copy failed: {err}"));
+                }
+            }
+            None => warnings.push("Clipboard copy skipped: no image was captured.".to_string()),
+        }
+    }
 
     let result = AppshotResult {
         ok: image.is_some() && errors.is_empty(),

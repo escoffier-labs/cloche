@@ -114,14 +114,15 @@ fn tool_definitions() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "target": { "type": "string", "enum": ["active", "screen", "window"], "default": "active" },
+                    "target": { "type": "string", "enum": ["active", "screen", "window", "region"], "default": "active", "description": "region opens an interactive selector and needs a human at the desk to drag." },
                     "title": { "type": "string", "description": "Window title to match when target=window." },
                     "app": { "type": "string", "description": "App name to match when target=window." },
                     "windowId": { "type": "string" },
                     "outDir": { "type": "string", "description": "Output directory for the capture." },
                     "presentation": { "type": "string", "enum": ["raw", "card", "both"], "default": "both" },
                     "detail": { "type": "string", "enum": ["auto", "low", "high", "original"], "default": "high" },
-                    "styleSeed": { "type": "integer" }
+                    "styleSeed": { "type": "integer" },
+                    "clipboard": { "type": "boolean", "description": "Copy the card to the system clipboard after capture." }
                 }
             }
         },
@@ -206,6 +207,9 @@ pub fn tool_command_args(name: &str, arguments: &Value) -> Result<Vec<String>, S
             if let Some(value) = arguments.get("styleSeed").and_then(Value::as_u64) {
                 args.push("--style-seed".to_string());
                 args.push(value.to_string());
+            }
+            if arguments.get("clipboard").and_then(Value::as_bool) == Some(true) {
+                args.push("--clipboard".to_string());
             }
         }
         "polish" => {
@@ -415,6 +419,20 @@ mod tests {
         assert!(args.windows(2).any(|w| w == ["--out", "/tmp/card.png"]));
         assert!(args.windows(2).any(|w| w == ["--palette", "violet-haze"]));
         assert!(args.windows(2).any(|w| w == ["--style-seed", "12"]));
+    }
+
+    #[test]
+    fn capture_args_map_region_and_clipboard() {
+        let args = tool_command_args("capture", &json!({ "target": "region", "clipboard": true }))
+            .expect("args");
+        assert!(args.windows(2).any(|w| w == ["--target", "region"]));
+        assert!(args.contains(&"--clipboard".to_string()));
+    }
+
+    #[test]
+    fn capture_args_omit_clipboard_when_false() {
+        let args = tool_command_args("capture", &json!({ "clipboard": false })).expect("args");
+        assert!(!args.contains(&"--clipboard".to_string()));
     }
 
     #[test]

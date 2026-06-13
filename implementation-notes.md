@@ -75,3 +75,15 @@ Running log of decisions and tradeoffs not captured in commit messages or the sp
 - `rand` features: `std`, `std_rng`, `thread_rng`, `os_rng` are exactly what
   `rand::rng()` + `StdRng::seed_from_u64` need. `schemars` keeps `derive` and
   `chrono` (DateTime fields in the contract derive JsonSchema).
+
+## Region capture and clipboard (2026-06-12)
+
+- `capture --target region` reuses the whole capture contract instead of being
+  a separate `grab` verb: gallery/latest/preview, metadata.json, and the MCP
+  capture tool all picked it up for free. Spec: docs/specs/2026-06-12-region-capture.md.
+- Flameshot is driven with `gui --accept-on-select --path <file>`. `--raw` is a
+  trap: a running flameshot daemon takes over the capture and prints the PNG on
+  ITS stdout, not the client's. Discovered live; encoded as an AGENTS.md gotcha.
+- Clipboard copy shells out (wl-copy / xclip) per the no-new-deps rule, in
+  src/clipboard.rs with the selection logic split out pure for unit tests.
+  Failures are capture warnings, not errors: the shot on disk is still good.

@@ -184,7 +184,67 @@ fn linux_capture(request: CaptureRequest<'_>) -> Result<CaptureSuccess, AppError
         CaptureTarget::Screen => capture_screen(request.output_path),
         CaptureTarget::Active => capture_active(request.output_path),
         CaptureTarget::Window => capture_window(request),
+        CaptureTarget::Region => capture_region(request.output_path),
     }
+}
+
+/// Interactive region selection. A human drags a rectangle; the shot is taken
+/// on release. Flameshot first (works on X11 and Wayland), ImageMagick
+/// `import` drag-select as the X11 fallback.
+///
+/// Flameshot must be driven through `--path`, never `--raw`: when a flameshot
+/// daemon is already running the capture is delegated to it, and raw PNG
+/// output goes to the daemon's stdout instead of ours. The file can also land
+/// a beat after the client exits, hence the short poll.
+#[cfg(not(target_os = "windows"))]
+fn capture_region(output_path: &Path) -> Result<CaptureSuccess, AppError> {
+    if util::has_command("flameshot") {
+        let output = output_path.display().to_string();
+        let _ = util::run_status(
+            "flameshot",
+            &["gui", "--accept-on-select", "--path", &output],
+        );
+        for _ in 0..6 {
+            if output_path.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        if output_path.exists() {
+            return Ok(CaptureSuccess {
+                backend: BackendInfo {
+                    name: "flameshot".to_string(),
+                    strategy: "interactive region selection (accept-on-select)".to_string(),
+                },
+                window: None,
+            });
+        }
+        return Err(AppError::Message(
+            "region selection aborted or produced no image".to_string(),
+        ));
+    }
+
+    if util::env_var("DISPLAY").is_some() && util::has_command("import") {
+        let output = output_path.display().to_string();
+        util::run_status("import", &[&output])?;
+        if output_path.exists() {
+            return Ok(CaptureSuccess {
+                backend: BackendInfo {
+                    name: "x11".to_string(),
+                    strategy: "ImageMagick import drag selection".to_string(),
+                },
+                window: None,
+            });
+        }
+        return Err(AppError::Message(
+            "region selection aborted or produced no image".to_string(),
+        ));
+    }
+
+    Err(AppError::Message(
+        "no region selector available; install flameshot (any session) or ImageMagick (X11)"
+            .to_string(),
+    ))
 }
 
 #[cfg(not(target_os = "windows"))]

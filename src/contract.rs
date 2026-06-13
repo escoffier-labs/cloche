@@ -13,6 +13,7 @@ pub enum CaptureTarget {
     Active,
     Screen,
     Window,
+    Region,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, ValueEnum, PartialEq, Eq)]
@@ -181,6 +182,12 @@ mod tests {
     use super::AppshotResult;
     use super::CaptureTarget;
     use super::TextInfo;
+
+    #[test]
+    fn region_target_uses_camel_case_wire_value() {
+        let value = serde_json::to_value(CaptureTarget::Region).expect("serialize");
+        assert_eq!(value, json!("region"));
+    }
 
     #[test]
     fn appshot_result_uses_camel_case_wire_keys() {

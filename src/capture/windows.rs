@@ -412,6 +412,12 @@ pub fn capture(request: CaptureRequest<'_>) -> Result<CaptureSuccess, AppError> 
         CaptureTarget::Active => "active",
         CaptureTarget::Screen => "screen",
         CaptureTarget::Window => "window",
+        CaptureTarget::Region => {
+            return Err(AppError::Message(
+                "region capture is not supported on Windows yet; use Win+Shift+S, save the file, then `cloche polish <file>`"
+                    .to_string(),
+            ));
+        }
     };
     let output = request.output_path.display().to_string();
     let args = vec![
@@ -433,6 +439,7 @@ pub fn capture(request: CaptureRequest<'_>) -> Result<CaptureSuccess, AppError> 
                 CaptureTarget::Window => {
                     "EnumWindows lookup + GetWindowRect + PrintWindow/CopyFromScreen fallback"
                 }
+                CaptureTarget::Region => unreachable!("region returns early above"),
             }
             .to_string(),
         },

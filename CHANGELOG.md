@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `capture --target region`: interactive region selection via Flameshot
+  (accept-on-select) or ImageMagick `import` drag-select on X11. Aborted
+  selections report a clean error. Windows returns a clear unsupported
+  message for now.
+- `capture --clipboard`: copy the presentation card (or raw shot) to the
+  system clipboard after capture, via wl-copy or xclip. Copy failures are
+  warnings, never capture errors.
+
 ## [0.2.0] - 2026-06-12
 
 ### Added

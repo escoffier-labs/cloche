@@ -32,7 +32,7 @@ This repo started as `appshots`. The `appshots` binary remains as a compatibilit
 
 ## Current Capabilities
 
-- Captures the active window, a selected window, or the full screen.
+- Captures the active window, a selected window, the full screen, or an interactively selected region.
 - Writes `shot.png`, `metadata.json`, optional `text.txt`, and a polished `shot-card.png`.
 - Styles any existing image into the same presentation card with `cloche polish`.
 - Emits stable JSON on stdout for agents and automation.
@@ -128,6 +128,7 @@ cloche capture --target active --presentation both --out-dir /tmp/cloche-shot --
 cloche capture --target active --style-seed 12345 --out-dir /tmp/cloche-shot --format json
 cloche capture --target screen --out-dir /tmp/cloche-shot --format json
 cloche capture --target window --title Firefox --out-dir /tmp/cloche-shot --format json
+cloche capture --target region --presentation both --clipboard --out-dir /tmp/cloche-shot --format json
 cloche polish /tmp/diff.png --format json
 cloche polish /tmp/diff.png --out /tmp/diff-card.png --palette ember-glow --style-seed 12345
 cloche gallery --limit 10
@@ -155,6 +156,18 @@ Each successful Shot directory contains:
 Capture exits with `0` only when a raw image was written. Text extraction and presentation-image failures are warnings because accessibility support and desktop compositing vary by toolkit, app, desktop environment, and OS. `--target screen` exists as a fallback and debugging mode. `--target active` is the default.
 
 Use `--presentation raw`, `--presentation card`, or `--presentation both` to control output image generation. Use `--style-seed <number>` to reproduce a randomized card style exactly.
+
+`--target region` opens an interactive selector (Flameshot when available, ImageMagick `import` drag-select on X11): drag a rectangle and the shot is taken the moment you release. Add `--clipboard` to copy the finished card straight to the clipboard (wl-copy on Wayland, xclip on X11). Region capture needs a human at the desk; it is not for headless agents. Not yet supported on Windows: use Win+Shift+S, save the file, then `cloche polish <file>`.
+
+## Hotkey Workflow
+
+Bind one command to your desktop's screenshot key and get a share-ready card on the clipboard:
+
+```bash
+cloche capture --target region --presentation both --clipboard --out-dir ~/Pictures/ClocheShots/$(date +%s)
+```
+
+On GNOME: Settings -> Keyboard -> Custom Shortcuts. On KDE: System Settings -> Shortcuts. Wrap it in a small script if you want desktop notifications on top.
 
 `cloche polish` writes a single card PNG instead of a Shot directory: `<input>-card.png` next to the input by default, or the `--out <path>` you pass (it must end in `.png` because the card's rounded canvas corners need alpha). Its stdout JSON reports `input`, `card`, and `presentationStyle`.
 

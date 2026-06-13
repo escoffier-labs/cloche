@@ -35,6 +35,8 @@ It runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `c
 - Capture exits 0 only when a raw image was written. Text extraction and card rendering failures are warnings by design -> do not promote them to errors.
 - Running from SSH or an agent process -> desktop env vars (DISPLAY, XAUTHORITY, DBUS_SESSION_BUS_ADDRESS) are discovered from running desktop processes. GNOME/KDE Wayland may block silent active-window capture; `--target screen` is the fallback.
 - Windows capture uses `PrintWindow` with a .NET `CopyFromScreen` fallback and requires an interactive desktop session. Plain OpenSSH sessions can build and run `doctor` but cannot capture.
+- Driving Flameshot from code -> always use `--path`, never `--raw`: with a flameshot daemon running, the capture is delegated and raw PNG goes to the daemon's stdout. The file can also land after the client exits; poll briefly.
+- `--target region` blocks on a human dragging a selection -> never invoke it in tests or headless automation.
 - Writing a card-rendering test -> styling is randomized; pass `--style-seed <number>` to make output deterministic.
 - Adding unit tests -> they live in `#[cfg(test)]` modules inside `src/*.rs`. There is no `tests/` dir; do not create one for unit tests.
 

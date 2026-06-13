@@ -2,6 +2,7 @@ mod backends;
 mod capture;
 mod captures;
 mod cli;
+mod clipboard;
 mod codex;
 mod contract;
 mod html;
