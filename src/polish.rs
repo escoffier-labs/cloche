@@ -146,13 +146,14 @@ pub fn render_codex_card(
 }
 
 /// Pure composition step: rounded window on a styled backdrop with layered
-/// shadows, rim highlight, and rounded canvas corners.
+/// shadows and a rim highlight. The outer canvas is a fully opaque rectangle
+/// (like a Codex appshot) so the card survives JPEG re-encoding and pasting
+/// into apps that flatten alpha on white; only the inner window is rounded.
 pub fn compose_card(input: &DynamicImage, style: &PresentationStyle) -> RgbaImage {
     let (window_width, window_height) = input.dimensions();
     let scale = (window_width.min(window_height) as f32 / REFERENCE_SIZE).clamp(0.7, 3.0);
     let padding = (style.padding as f32 * scale).round() as u32;
     let card_radius = ((style.corner_radius as f32 * scale).round() as u32).max(6);
-    let outer_radius = (padding as f32 * 0.45).round() as u32;
     let rim_width = (1.6 * scale).clamp(1.0, 4.0);
 
     let window = rounded_window(input, card_radius, rim_width);
@@ -190,7 +191,6 @@ pub fn compose_card(input: &DynamicImage, style: &PresentationStyle) -> RgbaImag
     );
     alpha_composite(&mut canvas, &key, 0, 0);
     alpha_composite(&mut canvas, &window, padding as i32, padding as i32);
-    round_canvas_corners(&mut canvas, outer_radius);
     canvas
 }
 
@@ -319,25 +319,6 @@ fn soft_shadow_layer(
         canvas_height,
         imageops::FilterType::Triangle,
     )
-}
-
-fn round_canvas_corners(canvas: &mut RgbaImage, radius: u32) {
-    if radius == 0 {
-        return;
-    }
-    let (width, height) = canvas.dimensions();
-    for y in 0..height {
-        for x in 0..width {
-            if x >= radius && x < width - radius && y >= radius && y < height - radius {
-                continue;
-            }
-            let coverage = rounded_alpha(x, y, width, height, radius);
-            if coverage < 255 {
-                let pixel = canvas.get_pixel_mut(x, y);
-                pixel.0[3] = ((u16::from(pixel.0[3]) * u16::from(coverage)) / 255) as u8;
-            }
-        }
-    }
 }
 
 fn backdrop(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
@@ -478,14 +459,26 @@ mod tests {
     }
 
     #[test]
-    fn canvas_corners_are_transparent() {
+    fn card_is_fully_opaque_everywhere() {
+        // Every pixel must be opaque so the card survives JPEG re-encoding and
+        // pasting into apps that composite alpha on white (Discord, LinkedIn).
+        // The four outer corners were the regression: a rounded transparent
+        // canvas rendered white the moment alpha was flattened.
         let canvas = compose_card(&test_input(400, 300), &style_from_seed(7));
         let (width, height) = canvas.dimensions();
-        assert_eq!(canvas.get_pixel(0, 0).0[3], 0);
-        assert_eq!(canvas.get_pixel(width - 1, 0).0[3], 0);
-        assert_eq!(canvas.get_pixel(0, height - 1).0[3], 0);
-        assert_eq!(canvas.get_pixel(width - 1, height - 1).0[3], 0);
-        assert_eq!(canvas.get_pixel(width / 2, height / 2).0[3], 255);
+        for &(x, y) in &[
+            (0, 0),
+            (width - 1, 0),
+            (0, height - 1),
+            (width - 1, height - 1),
+            (width / 2, height / 2),
+        ] {
+            assert_eq!(
+                canvas.get_pixel(x, y).0[3],
+                255,
+                "pixel ({x},{y}) must be opaque"
+            );
+        }
     }
 
     #[test]

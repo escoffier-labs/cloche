@@ -15,6 +15,13 @@ All notable changes to this project are documented here. The format follows
   system clipboard after capture, via wl-copy or xclip. Copy failures are
   warnings, never capture errors.
 
+### Fixed
+- Presentation cards are now fully opaque to the edges (square canvas, like a
+  Codex appshot) instead of having transparent rounded outer corners. The
+  transparent corners rendered as white when the PNG was flattened to JPEG or
+  pasted into apps that composite alpha on white. The screenshot inside keeps
+  its rounded corners and shadow.
+
 ## [0.2.0] - 2026-06-12
 
 ### Added

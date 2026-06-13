@@ -149,7 +149,7 @@ The old `appshots` command remains as an alias for the same code path.
 Each successful Shot directory contains:
 
 - `shot.png`, the raw captured image.
-- `shot-card.png`, a presentation image with background cleanup, rounded corners, padding, and a soft shadow.
+- `shot-card.png`, a presentation image: the screenshot with rounded corners and a soft shadow on a full-bleed gradient backdrop, fully opaque so it survives JPEG and pasting anywhere.
 - `metadata.json`, the same JSON object printed to stdout.
 - `text.txt`, optional best-effort accessible text from the focused app.
 
