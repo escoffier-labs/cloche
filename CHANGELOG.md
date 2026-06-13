@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `scripts/cloche-grab.sh`: a portable hotkey wrapper (region capture ->
+  polish -> clipboard -> notification) with no machine-specific paths, plus
+  README binding instructions for GNOME, KDE, and tiling WMs, so any user can
+  set up a one-press screenshot-to-card key.
 - `capture --target region`: interactive region selection via Flameshot
   (accept-on-select) or ImageMagick `import` drag-select on X11. Aborted
   selections report a clean error. Windows returns a clear unsupported

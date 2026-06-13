@@ -161,15 +161,42 @@ Use `--presentation raw`, `--presentation card`, or `--presentation both` to con
 
 ## Hotkey Workflow
 
-Bind one command to your desktop's screenshot key and get a share-ready card on the clipboard:
+Bind one key to get a share-ready card on your clipboard: press it, drag a
+region, paste the polished card anywhere. The capture, polish, and clipboard
+copy all happen in cloche; only the key binding is set up per desktop.
+
+The repo ships `scripts/cloche-grab.sh`, which wraps the capture and adds a
+desktop notification. Install it and bind it:
+
+```bash
+# 1. Put the script on your PATH (or point the binding at it in place).
+install -Dm755 scripts/cloche-grab.sh ~/.local/bin/cloche-grab
+
+# 2. Confirm it works (it opens the region selector):
+cloche-grab
+```
+
+Then bind `cloche-grab` to a key:
+
+- **GNOME:** Settings -> Keyboard -> View and Customize Shortcuts -> Custom
+  Shortcuts -> +. Name it "Cloche Grab", command `cloche-grab`, and set the
+  shortcut (e.g. Print). To move the native screenshot UI off Print first:
+  `gsettings set org.gnome.shell.keybindings show-screenshot-ui "['<Shift>Print']"`.
+- **KDE:** System Settings -> Shortcuts -> Custom Shortcuts -> Edit -> New ->
+  Global Shortcut -> Command/URL, command `cloche-grab`, then assign a key.
+- **Anything else (sway, i3, ...):** bind a key to `cloche-grab` in your WM
+  config.
+
+Prefer no script? Bind this one-liner directly instead:
 
 ```bash
 cloche capture --target region --presentation both --clipboard --out-dir ~/Pictures/ClocheShots/$(date +%s)
 ```
 
-On GNOME: Settings -> Keyboard -> Custom Shortcuts. On KDE: System Settings -> Shortcuts. Wrap it in a small script if you want desktop notifications on top.
-
-`cloche polish` writes a single card PNG instead of a Shot directory: `<input>-card.png` next to the input by default, or the `--out <path>` you pass (it must end in `.png` because the card's rounded canvas corners need alpha). Its stdout JSON reports `input`, `card`, and `presentationStyle`.
+`cloche polish` writes a single card PNG instead of a Shot directory:
+`<input>-card.png` next to the input by default, or the `--out <path>` you
+pass (it must end in `.png`). Its stdout JSON reports `input`, `card`, and
+`presentationStyle`.
 
 ## Agent Use
 
