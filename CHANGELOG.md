@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-16
+
 ### Added
 - `cloche reels render`: render a vertical video reel from a source clip through
   a bundled Remotion template (opening title card, configurable fps/size/duration,
