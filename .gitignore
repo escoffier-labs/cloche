@@ -1,5 +1,7 @@
 /target
 /dist
+/remotion/node_modules
+/remotion/public/cloche-inputs
 /.claude
 /.codex
 

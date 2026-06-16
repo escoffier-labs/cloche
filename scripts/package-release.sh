@@ -28,5 +28,14 @@ cp target/release/cloche "$stage/cloche"
 cp target/release/appshots "$stage/appshots"
 cp LICENSE README.md ROADMAP.md "$stage/"
 
+# Bundle the Remotion reel template (source only; node_modules is installed on
+# first use) next to the binary so an extracted release can find it via the
+# executable-relative lookup in remotion_template_dir().
+if [ -d remotion ]; then
+  mkdir -p "$stage/remotion"
+  cp remotion/package.json remotion/package-lock.json remotion/tsconfig.json "$stage/remotion/"
+  cp -r remotion/src "$stage/remotion/src"
+fi
+
 tar -C dist -czf "$archive" "$(basename "$stage")"
 echo "$archive"

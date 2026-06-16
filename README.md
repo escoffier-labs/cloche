@@ -101,6 +101,28 @@ Style an existing screenshot into a presentation card without recapturing:
 cloche polish /tmp/diff.png --palette violet-haze --format json
 ```
 
+Render an existing short recording through the experimental Remotion reel engine:
+
+```bash
+cd remotion && npm install && cd ..
+cloche reels render \
+  --input raw.mp4 \
+  --out demo.mp4 \
+  --cues cues.json \
+  --title "Create a project"
+```
+
+The cue file follows the AppReels timeline shape:
+
+```json
+{
+  "titleCard": { "text": "Create a project", "ms": 900 },
+  "captions": [{ "startMs": 1000, "endMs": 2600, "text": "Open the project menu" }],
+  "zooms": [{ "startMs": 1200, "endMs": 2400, "scale": 1.08 }],
+  "outroCard": { "text": "Done", "ms": 700 }
+}
+```
+
 Preview the latest capture:
 
 ```bash

@@ -69,6 +69,30 @@ pub struct PolishResult {
     pub errors: Vec<String>,
 }
 
+/// Result of rendering a short Cloche reel from an existing recording.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReelRenderResult {
+    pub ok: bool,
+    pub version: String,
+    pub created_at: DateTime<Utc>,
+    pub engine: String,
+    pub input: PathBuf,
+    pub output: Option<VideoInfo>,
+    pub props: Option<PathBuf>,
+    pub duration_ms: u64,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoInfo {
+    pub path: PathBuf,
+    pub bytes: u64,
+    pub mime: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BackendInfo {

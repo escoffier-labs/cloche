@@ -18,6 +18,8 @@ use crate::contract::AppshotResult;
 use crate::contract::CaptureTarget;
 use crate::contract::ImageDetail;
 use crate::contract::ImageInfo;
+use crate::contract::ReelRenderResult;
+use crate::contract::VideoInfo;
 use crate::polish;
 use crate::text;
 use crate::util;
@@ -37,6 +39,7 @@ pub struct Cli {
 pub enum Command {
     Capture(CaptureArgs),
     Polish(PolishArgs),
+    Reels(ReelsArgs),
     Doctor(DoctorArgs),
     ListWindows(ListWindowsArgs),
     Gallery(GalleryArgs),
@@ -67,6 +70,59 @@ pub struct PolishArgs {
     /// Output format; only `json` exists today.
     #[arg(long, default_value = "json")]
     pub format: OutputFormat,
+}
+
+#[derive(Debug, Args)]
+pub struct ReelsArgs {
+    #[command(subcommand)]
+    pub command: ReelsCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ReelsCommand {
+    Render(ReelRenderArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ReelRenderArgs {
+    /// Raw source video to place inside the Cloche reel template.
+    #[arg(long)]
+    pub input: PathBuf,
+    /// Rendered MP4 output path.
+    #[arg(long)]
+    pub out: PathBuf,
+    /// Optional timeline/cue JSON, compatible with the AppReels cue shape.
+    #[arg(long)]
+    pub cues: Option<PathBuf>,
+    /// Title shown on the opening card and in the template metadata.
+    #[arg(long)]
+    pub title: Option<String>,
+    /// Total output duration in milliseconds. Defaults to the longest cue or 6s.
+    #[arg(long)]
+    pub duration_ms: Option<u64>,
+    /// Frames per second.
+    #[arg(long, default_value_t = 30)]
+    pub fps: u32,
+    /// Output width.
+    #[arg(long, default_value_t = 1080)]
+    pub width: u32,
+    /// Output height.
+    #[arg(long, default_value_t = 1920)]
+    pub height: u32,
+    /// Render engine. Only `remotion` is implemented.
+    #[arg(long, value_enum, default_value = "remotion")]
+    pub engine: ReelRenderEngine,
+    /// Keep the generated Remotion props JSON next to the output.
+    #[arg(long)]
+    pub keep_props: bool,
+    /// Output format; only `json` exists today.
+    #[arg(long, default_value = "json")]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
+pub enum ReelRenderEngine {
+    Remotion,
 }
 
 fn palette_name_parser() -> clap::builder::PossibleValuesParser {
@@ -166,6 +222,7 @@ pub struct SchemaArgs {
 pub enum SchemaTarget {
     Capture,
     Polish,
+    ReelRender,
 }
 
 /// Accepted for forward compatibility; every command prints JSON today, so
@@ -300,6 +357,281 @@ pub fn polish(args: PolishArgs) -> Result<ExitCode, Box<dyn std::error::Error>> 
     } else {
         ExitCode::from(1)
     })
+}
+
+pub fn reels(args: ReelsArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    match args.command {
+        ReelsCommand::Render(args) => reels_render(args),
+    }
+}
+
+pub fn reels_render(args: ReelRenderArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let result = run_reels_render(args);
+    print_json(&result)?;
+    Ok(if result.ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    })
+}
+
+fn run_reels_render(args: ReelRenderArgs) -> ReelRenderResult {
+    let mut warnings = Vec::new();
+    let mut errors = Vec::new();
+    let mut props_path = None;
+    let mut output = None;
+
+    if !args.input.exists() {
+        errors.push(format!(
+            "input video does not exist: {}",
+            args.input.display()
+        ));
+    }
+    if let Some(parent) = args
+        .out
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        && let Err(err) = util::create_dir_all(parent)
+    {
+        errors.push(err.to_string());
+    }
+
+    let cues = match args.cues.as_ref() {
+        Some(path) => match std::fs::read_to_string(path) {
+            Ok(raw) => match serde_json::from_str::<serde_json::Value>(&raw) {
+                Ok(value) => Some(value),
+                Err(err) => {
+                    errors.push(format!("cue file is not valid JSON: {err}"));
+                    None
+                }
+            },
+            Err(err) => {
+                errors.push(format!("cue file could not be read: {err}"));
+                None
+            }
+        },
+        None => None,
+    };
+    let duration_ms = args
+        .duration_ms
+        .unwrap_or_else(|| inferred_reel_duration_ms(cues.as_ref()));
+
+    if errors.is_empty() {
+        match args.engine {
+            ReelRenderEngine::Remotion => render_reel_with_remotion(
+                &args,
+                cues.unwrap_or_else(|| serde_json::json!({})),
+                duration_ms,
+                &mut errors,
+                &mut props_path,
+                &mut output,
+            ),
+        }
+    }
+
+    if output.is_none() && props_path.is_some() {
+        warnings.push("render props were written for debugging".to_string());
+    }
+
+    ReelRenderResult {
+        ok: output.is_some() && errors.is_empty(),
+        version: VERSION.to_string(),
+        created_at: Utc::now(),
+        engine: "remotion".to_string(),
+        input: util::canonical_or_original(&args.input),
+        output,
+        props: props_path,
+        duration_ms,
+        warnings,
+        errors,
+    }
+}
+
+fn render_reel_with_remotion(
+    args: &ReelRenderArgs,
+    cues: serde_json::Value,
+    duration_ms: u64,
+    errors: &mut Vec<String>,
+    props_path: &mut Option<PathBuf>,
+    output: &mut Option<VideoInfo>,
+) {
+    let remotion_dir = remotion_template_dir();
+    if !remotion_dir.join("package.json").exists() {
+        errors.push(format!(
+            "Remotion template package is missing: {}",
+            remotion_dir.display()
+        ));
+        return;
+    }
+
+    let staged_input = match stage_remotion_video_asset(&remotion_dir, &args.input, errors) {
+        Some(path) => path,
+        None => return,
+    };
+    let props = serde_json::json!({
+        "inputVideo": staged_input.clone(),
+        "title": args.title.clone().unwrap_or_else(|| "Cloche Reel".to_string()),
+        "durationMs": duration_ms,
+        "fps": args.fps,
+        "width": args.width,
+        "height": args.height,
+        "cues": cues,
+    });
+    let path = default_reel_props_path(&args.out);
+    match serde_json::to_vec_pretty(&props)
+        .map_err(|err| err.to_string())
+        .and_then(|bytes| util::write(&path, bytes).map_err(|err| err.to_string()))
+    {
+        Ok(()) => {
+            *props_path = Some(util::canonical_or_original(&path));
+            let remotion_dir_arg = remotion_dir.display().to_string();
+            // Remotion runs with current_dir set to the template dir, so it
+            // resolves relative paths against that dir. Pass absolute paths so a
+            // relative --out (and its props sidecar) land where the user expects.
+            let output_arg = std::path::absolute(&args.out)
+                .unwrap_or_else(|_| args.out.clone())
+                .display()
+                .to_string();
+            let props_arg = std::path::absolute(&path)
+                .unwrap_or_else(|_| path.clone())
+                .display()
+                .to_string();
+            let render = std::process::Command::new("npm")
+                .current_dir(&remotion_dir_arg)
+                .args([
+                    "exec",
+                    "--",
+                    "remotion",
+                    "render",
+                    "src/index.ts",
+                    "ClocheReel",
+                    &output_arg,
+                    "--props",
+                    &props_arg,
+                    "--log",
+                    "error",
+                    "--overwrite",
+                ])
+                .output();
+            match render {
+                Ok(result) if result.status.success() => {
+                    if !args.keep_props {
+                        let _ = std::fs::remove_file(&path);
+                        *props_path = None;
+                    }
+                    match util::file_size(&args.out) {
+                        Ok(bytes) => {
+                            *output = Some(VideoInfo {
+                                path: util::canonical_or_original(&args.out),
+                                bytes,
+                                mime: "video/mp4".to_string(),
+                            });
+                        }
+                        Err(err) => errors.push(err.to_string()),
+                    }
+                }
+                Ok(result) => {
+                    let stderr = String::from_utf8_lossy(&result.stderr);
+                    let stdout = String::from_utf8_lossy(&result.stdout);
+                    errors.push(format!(
+                        "Remotion render failed with status {}: {}{}",
+                        result.status,
+                        stderr.trim(),
+                        stdout.trim()
+                    ));
+                }
+                Err(err) => errors.push(format!("failed to launch npm/remotion: {err}")),
+            }
+        }
+        Err(err) => errors.push(err),
+    }
+
+    // The staged input video is a large intermediate copy under remotion/public,
+    // useful only as Remotion's render input. Always remove it after the render
+    // attempt (success or failure) so renders never leak a full copy of the
+    // source MP4. (keep_props only governs the small props JSON.)
+    let _ = std::fs::remove_file(remotion_dir.join("public").join(&staged_input));
+}
+
+fn remotion_template_dir() -> PathBuf {
+    // 1. Explicit override for packagers / unusual layouts.
+    match std::env::var("CLOCHE_REMOTION_DIR") {
+        Ok(dir) if !dir.is_empty() => return PathBuf::from(dir),
+        _ => {}
+    }
+    // 2. Alongside an installed binary: the template ships in the crate, so for
+    //    `cargo install` / release archives it sits relative to the executable,
+    //    not the build machine's source tree.
+    if let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+    {
+        for candidate in [dir.join("remotion"), dir.join("../share/cloche/remotion")] {
+            if candidate.join("package.json").exists() {
+                return candidate;
+            }
+        }
+    }
+    // 3. Dev fallback: the source tree this binary was built from.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("remotion")
+}
+
+fn default_reel_props_path(out: &Path) -> PathBuf {
+    out.with_extension("remotion-props.json")
+}
+
+fn stage_remotion_video_asset(
+    remotion_dir: &Path,
+    input: &Path,
+    errors: &mut Vec<String>,
+) -> Option<String> {
+    let asset_dir = remotion_dir.join("public").join("cloche-inputs");
+    if let Err(err) = util::create_dir_all(&asset_dir) {
+        errors.push(err.to_string());
+        return None;
+    }
+    let file_name = input
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("input.mp4");
+    let staged_name = format!("{}-{file_name}", std::process::id());
+    let staged_path = asset_dir.join(&staged_name);
+    match std::fs::copy(input, &staged_path) {
+        Ok(_) => Some(format!("cloche-inputs/{staged_name}")),
+        Err(err) => {
+            errors.push(format!(
+                "input video could not be staged for Remotion: {err}"
+            ));
+            None
+        }
+    }
+}
+
+fn inferred_reel_duration_ms(cues: Option<&serde_json::Value>) -> u64 {
+    let mut max_end = 0;
+    if let Some(cues) = cues {
+        for key in ["captions", "zooms"] {
+            if let Some(items) = cues.get(key).and_then(|value| value.as_array()) {
+                for item in items {
+                    let end = item
+                        .get("endMs")
+                        .and_then(|value| value.as_u64())
+                        .unwrap_or(0);
+                    max_end = max_end.max(end);
+                }
+            }
+        }
+        for key in ["titleCard", "outroCard"] {
+            if let Some(ms) = cues
+                .get(key)
+                .and_then(|value| value.get("ms"))
+                .and_then(|value| value.as_u64())
+            {
+                max_end = max_end.max(ms);
+            }
+        }
+    }
+    max_end.max(6_000)
 }
 
 fn run_polish(args: PolishArgs) -> crate::contract::PolishResult {
@@ -499,6 +831,7 @@ fn schema_value(target: SchemaTarget) -> serde_json::Value {
     let schema = match target {
         SchemaTarget::Capture => schema_for!(AppshotResult),
         SchemaTarget::Polish => schema_for!(crate::contract::PolishResult),
+        SchemaTarget::ReelRender => schema_for!(crate::contract::ReelRenderResult),
     };
     serde_json::to_value(schema).expect("schema serializes")
 }
@@ -676,6 +1009,26 @@ mod tests {
         assert!(properties.contains_key("card"));
         assert!(properties.contains_key("presentationStyle"));
         assert!(!properties.contains_key("backend"));
+    }
+
+    #[test]
+    fn schema_for_reel_render_describes_the_reel_contract() {
+        let value = schema_value(SchemaTarget::ReelRender);
+        let properties = value["properties"].as_object().expect("properties");
+        assert!(properties.contains_key("engine"));
+        assert!(properties.contains_key("durationMs"));
+        assert!(properties.contains_key("output"));
+    }
+
+    #[test]
+    fn reel_duration_uses_longest_cue_with_default_floor() {
+        let cues = serde_json::json!({
+            "captions": [{ "startMs": 100, "endMs": 2_400, "text": "Caption" }],
+            "zooms": [{ "startMs": 1_000, "endMs": 7_200, "scale": 1.1 }]
+        });
+
+        assert_eq!(inferred_reel_duration_ms(Some(&cues)), 7_200);
+        assert_eq!(inferred_reel_duration_ms(None), 6_000);
     }
 
     #[test]

@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `cloche reels render`: render a vertical video reel from a source clip through
+  a bundled Remotion template (opening title card, configurable fps/size/duration,
+  optional AppReels-compatible cue timeline). The template resolves via
+  `CLOCHE_REMOTION_DIR`, then next to the installed binary, then the dev tree.
+
 ## [0.3.0] - 2026-06-13
 
 ### Added

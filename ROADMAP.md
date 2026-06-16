@@ -36,6 +36,8 @@ The rebrand shipped: `cloche` is the primary binary/package name, the repository
 
 Reels should merge the useful Appreels work into Cloche without making video feel bolted on.
 
+- Experimental Remotion rendering is available through `cloche reels render --engine remotion`.
+  It consumes an existing MP4 plus AppReels-shaped cue JSON and outputs a vertical MP4.
 - Add a `cloche reels` command group once the integration starts.
 - Bring over Appreels capture and render pieces behind Cloche naming:
   - `record` for raw short desktop captures.
