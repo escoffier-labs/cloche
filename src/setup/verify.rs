@@ -44,7 +44,9 @@ fn nonempty(path: &Path) -> bool {
 
 /// Check 1: run a real non-interactive screen capture and confirm artifacts.
 pub fn check_capture_pipeline() -> Check {
-    let has_gui = util::env_var("DISPLAY").is_some() || util::env_var("WAYLAND_DISPLAY").is_some();
+    let has_gui = cfg!(target_os = "windows")
+        || util::env_var("DISPLAY").is_some()
+        || util::env_var("WAYLAND_DISPLAY").is_some();
     if !has_gui {
         return Check {
             name: "capture-pipeline",
@@ -91,6 +93,13 @@ pub fn check_capture_pipeline() -> Check {
 
 /// Check 2: cloche-grab on PATH, and on GNOME a binding points at it.
 pub fn check_hotkey() -> Check {
+    if cfg!(target_os = "windows") {
+        return Check {
+            name: "hotkey",
+            status: CheckStatus::Skip,
+            detail: "hotkey binding is Linux-only; on Windows use Win+Shift+S".to_string(),
+        };
+    }
     let grab = hotkey::grab_script_path();
     if !grab.exists() {
         return Check {

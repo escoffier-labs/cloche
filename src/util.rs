@@ -93,6 +93,37 @@ pub fn run_status(program: &str, args: &[&str]) -> Result<(), AppError> {
     Ok(())
 }
 
+// Windows variants: no desktop-environment discovery (that is an X11/Wayland
+// concept). `cloche setup` and other cross-platform callers use these.
+#[cfg(target_os = "windows")]
+pub fn run_output(program: &str, args: &[&str]) -> Result<String, AppError> {
+    let output = std::process::Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|source| AppError::CommandSpawn {
+            program: program.to_string(),
+            source,
+        })?;
+    if !output.status.success() {
+        return Err(AppError::CommandFailed {
+            program: program.to_string(),
+            status: output.status,
+            stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        });
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[cfg(target_os = "windows")]
+pub fn run_status(program: &str, args: &[&str]) -> Result<(), AppError> {
+    run_output(program, args).map(|_| ())
+}
+
+#[cfg(target_os = "windows")]
+pub fn env_var(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|value| !value.is_empty())
+}
+
 pub fn create_dir_all(path: &Path) -> Result<(), AppError> {
     std::fs::create_dir_all(path).map_err(|source| AppError::Io {
         path: path.to_path_buf(),

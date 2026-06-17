@@ -218,6 +218,12 @@ pub fn print_manual_binding(desktop: Desktop, grab: &Path) {
 /// Install the grab script and bind the hotkey for the detected desktop.
 /// Returns the outcome plus any warnings (e.g. PATH not set).
 pub fn setup_hotkey(apply: bool) -> (HotkeyOutcome, Vec<String>) {
+    if cfg!(target_os = "windows") {
+        eprintln!(
+            "Windows has no cloche auto-bound hotkey. Use Win+Shift+S to grab a region, then `cloche polish <file>`."
+        );
+        return (HotkeyOutcome::Manual, Vec::new());
+    }
     let mut warnings = Vec::new();
     if apply {
         match install_grab_script() {

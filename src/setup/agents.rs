@@ -132,7 +132,11 @@ pub fn register_codex(path: &Path, apply: bool) -> Result<(bool, Option<PathBuf>
 }
 
 fn home() -> PathBuf {
-    PathBuf::from(util::env_var("HOME").unwrap_or_else(|| "/root".to_string()))
+    // HOME on Unix; USERPROFILE is the Windows equivalent.
+    util::env_var("HOME")
+        .or_else(|| util::env_var("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 /// Which clients look installed on this machine.
