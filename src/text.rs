@@ -180,11 +180,10 @@ pub fn extract(output_dir: &Path, warnings: &mut Vec<String>) -> TextInfo {
     };
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        if stderr.is_empty() {
-            warnings.push("No accessible focused text was exposed by AT-SPI.".to_string());
-        } else {
-            warnings.push(format!("AT-SPI text extraction failed: {stderr}"));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        match summarize_atspi_error(&stderr) {
+            Some(msg) => warnings.push(msg),
+            None => warnings.push("No accessible focused text was exposed by AT-SPI.".to_string()),
         }
         return TextInfo::default();
     }
@@ -196,6 +195,32 @@ pub fn extract(output_dir: &Path, warnings: &mut Vec<String>) -> TextInfo {
         "AT-SPI returned no focused text.",
         warnings,
     )
+}
+
+/// Turn an AT-SPI helper's stderr into one concise warning line. Returns None
+/// when stderr is empty (treated as "no text exposed"). Avoids dumping a raw
+/// multi-line Python traceback; the common "GI bindings missing" case gets a
+/// plain message, everything else collapses to the last meaningful line.
+#[cfg(not(target_os = "windows"))]
+fn summarize_atspi_error(stderr: &str) -> Option<String> {
+    let trimmed = stderr.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.contains("Namespace Atspi not available")
+        || trimmed.contains("No module named 'gi'")
+        || trimmed.contains("Namespace Gdk")
+    {
+        return Some(
+            "Text extraction skipped: AT-SPI / Python GI bindings are not installed.".to_string(),
+        );
+    }
+    let last = trimmed
+        .lines()
+        .map(str::trim)
+        .rfind(|l| !l.is_empty())
+        .unwrap_or(trimmed);
+    Some(format!("AT-SPI text extraction failed: {last}"))
 }
 
 #[cfg(target_os = "windows")]
@@ -233,6 +258,21 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create temp dir");
         dir
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn summarizes_atspi_errors_without_dumping_tracebacks() {
+        assert_eq!(super::summarize_atspi_error("   "), None);
+        let traceback = "Traceback (most recent call last):\n  File \"<string>\", line 5\n    raise ValueError('Namespace Atspi not available')\nValueError: Namespace Atspi not available";
+        let msg = super::summarize_atspi_error(traceback).unwrap();
+        assert!(msg.contains("GI bindings are not installed"));
+        assert!(!msg.contains("Traceback"));
+        let other = "boom: something broke\nDetail: nope";
+        assert_eq!(
+            super::summarize_atspi_error(other).unwrap(),
+            "AT-SPI text extraction failed: Detail: nope"
+        );
     }
 
     #[test]

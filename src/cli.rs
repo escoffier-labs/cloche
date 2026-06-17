@@ -49,6 +49,7 @@ pub enum Command {
     Schema(SchemaArgs),
     CodexPayload(crate::codex::CodexPayloadArgs),
     Mcp(crate::mcp::McpArgs),
+    Setup(crate::setup::SetupArgs),
 }
 
 /// Style an existing image into a Cloche presentation card: rounded window,

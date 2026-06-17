@@ -87,3 +87,63 @@ Running log of decisions and tradeoffs not captured in commit messages or the sp
 - Clipboard copy shells out (wl-copy / xclip) per the no-new-deps rule, in
   src/clipboard.rs with the selection logic split out pure for unit tests.
   Failures are capture warnings, not errors: the shot on disk is still good.
+
+## Setup onboarding (2026-06-17)
+
+- `cloche setup` automates the previously manual onboarding: install cloche-grab,
+  bind Print (GNOME), register the MCP server with agents, then verify. Spec:
+  docs/specs/2026-06-17-setup-onboarding.md, plan: ...-setup-onboarding-plan.md.
+- No new deps. JSON configs (.claude.json, openclaw.json) are edited with the
+  existing serde_json. Codex's config.toml is edited by guarded text-append
+  (append the static `[mcp_servers.cloche]` block only when absent) rather than
+  pulling in a TOML crate; the block is static so presence == configured.
+- OpenClaw MCP schema confirmed against the live config: top-level
+  `mcp.servers.<name> = {command, args}`. Resolved the spec's print-only fallback.
+- Pure/side-effect split for testability: desktop classification, slot
+  selection, gsettings array parsing, JSON upsert, codex-block detection, and
+  the tools/list parser are all unit-tested without a desktop or subprocess.
+- The MCP verify check is a REAL end-to-end handshake: it spawns `cloche mcp`,
+  writes initialize + tools/list, and asserts capture+polish are listed. This is
+  the actual proof an LLM can call cloche, not just a config-file presence check.
+- GNOME idempotency keys on the binding command via `is_cloche_command`, which
+  matches both the bare `cloche-grab` and any `*/cloche-grab` absolute path.
+  Found live: an exact-string match created a duplicate "Cloche Grab" binding
+  next to a pre-existing one that used an absolute path. Basename match fixes it.
+- `gsettings` ignores HOME (talks to dbus), so sandbox-HOME testing still hits
+  the real GNOME session. Test the binding path via dry-run (`bind_gnome(false)`)
+  or expect to revert real keybindings afterward.
+- `util::env_var` falls back to scraping desktop-process environ, so clearing
+  XDG_CURRENT_DESKTOP in the child does NOT force a non-GNOME code path.
+
+## Clean-box onboarding test (2026-06-17)
+
+Tested cloche + brigade as a brand-new user on a pristine Ubuntu 24.04 LXC to
+catch "works on my machine" gaps. Findings:
+
+- MSRV vs distro Rust: Ubuntu 24.04 `apt install cargo` is rustc 1.75; cloche
+  needs 1.88. `cargo install cloche` fails for apt-Rust users. README now warns
+  and points at rustup. (rustup gave 1.96, built clean in ~40s; only extra dep
+  was build-essential for the linker.)
+- crates.io still serves cloche 0.3.0, NOT 0.4.0, despite the v0.4.0 release
+  commit + CHANGELOG. 0.4.0 (reels) was never published. ACTION: publish.
+- `--format json` was not machine-safe: generic MCP snippet, non-GNOME hotkey
+  steps, abort notice, and the confirm prompt all went to stdout and corrupted
+  JSON. Only surfaced on a clean box (no agent clients installed -> generic-print
+  path fires). Fixed: all human/prompt output -> stderr; decline still emits a
+  valid report. Caught by clean-box test + Codex review.
+- Headless coverage achieved: polish/mcp/doctor need no display; capture works
+  under Xvfb (import -window root); the GNOME gsettings bind works under
+  `dbus-run-session` + XDG_CURRENT_DESKTOP=GNOME + libglib2.0-bin
+  (gnome-settings-daemon-common provides the schema, libglib2.0-bin the
+  gsettings binary). Full `cloche setup --yes` goes all-green there.
+- AT-SPI missing dumps a raw Python traceback into capture warnings instead of a
+  clean message (cosmetic; text extraction is best-effort). Candidate cleanup.
+- cloche degrades correctly when gsettings is absent: warning + manual fallback,
+  no crash.
+
+Brigade (pipx install brigade-cli 0.12.0): full happy path clean -- repo and
+workspace quickstart, doctor, tools list, verify-harness, handoff
+draft/lint/doctor all OK. Only friction: README "60 seconds" block runs
+`brigade ...` right after `pipx install` in the same shell, but pipx warns
+`~/.local/bin` is not yet on PATH -> new user hits command-not-found. Suggest a
+`pipx ensurepath` + new-shell note between install and first command.
