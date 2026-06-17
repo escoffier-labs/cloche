@@ -196,20 +196,21 @@ pub fn bind_gnome(apply: bool) -> Result<HotkeyOutcome, crate::util::AppError> {
     Ok(HotkeyOutcome::Bound { changed: !already })
 }
 
-/// Print copy-pasteable binding steps for non-GNOME desktops.
+/// Print copy-pasteable binding steps for non-GNOME desktops. Goes to stderr so
+/// that `--format json` stdout stays pure JSON for machine consumers.
 pub fn print_manual_binding(desktop: Desktop, grab: &Path) {
     let cmd = grab.display();
     match desktop {
         Desktop::Kde => {
-            println!("KDE: System Settings -> Shortcuts -> Custom Shortcuts -> Edit -> New ->");
-            println!("  Global Shortcut -> Command/URL, command `{cmd}`, then assign Print.");
+            eprintln!("KDE: System Settings -> Shortcuts -> Custom Shortcuts -> Edit -> New ->");
+            eprintln!("  Global Shortcut -> Command/URL, command `{cmd}`, then assign Print.");
         }
         Desktop::Sway | Desktop::I3 => {
-            println!("Add to your WM config and reload:");
-            println!("  bindsym Print exec {cmd}");
+            eprintln!("Add to your WM config and reload:");
+            eprintln!("  bindsym Print exec {cmd}");
         }
         _ => {
-            println!("Bind a key to `{cmd}` in your desktop's keyboard settings.");
+            eprintln!("Bind a key to `{cmd}` in your desktop's keyboard settings.");
         }
     }
 }

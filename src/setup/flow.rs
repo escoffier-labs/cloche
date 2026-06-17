@@ -34,7 +34,20 @@ pub fn run(args: SetupArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let is_verify_only = matches!(args.command, Some(SetupCommand::Verify));
     let apply = !args.print && !is_verify_only;
     if apply && !args.yes && !confirm_prompt()? {
-        println!("Aborted. Nothing changed.");
+        // Emit a valid report so `--format json` stays parseable on decline.
+        let report = SetupReport {
+            ok: true,
+            mode: mode_label(&args.command),
+            applied: vec![],
+            skipped: vec![],
+            printed: vec![],
+            backups: vec![],
+            checks: vec![],
+            warnings: vec!["aborted by user; nothing changed".into()],
+            errors: vec![],
+        };
+        eprintln!("Aborted. Nothing changed.");
+        emit(&report, args.format)?;
         return Ok(ExitCode::SUCCESS);
     }
     let mut report = SetupReport {
@@ -132,13 +145,14 @@ fn mode_label(cmd: &Option<SetupCommand>) -> String {
 }
 
 fn confirm_prompt() -> Result<bool, std::io::Error> {
+    // Prompt on stderr so `--format json` stdout stays pure JSON.
     let desktop = hotkey::detect_desktop();
-    println!("Cloche setup will, on this {desktop:?} session:");
-    println!("  - install ~/.local/bin/cloche-grab and bind it to Print (GNOME) or print steps");
-    println!("  - register the cloche MCP server with detected agents (backs up edited files)");
-    println!("  - verify capture, hotkey, and MCP");
-    print!("Proceed? [y/N] ");
-    std::io::stdout().flush()?;
+    eprintln!("Cloche setup will, on this {desktop:?} session:");
+    eprintln!("  - install ~/.local/bin/cloche-grab and bind it to Print (GNOME) or print steps");
+    eprintln!("  - register the cloche MCP server with detected agents (backs up edited files)");
+    eprintln!("  - verify capture, hotkey, and MCP");
+    eprint!("Proceed? [y/N] ");
+    std::io::stderr().flush()?;
     let mut answer = String::new();
     std::io::stdin().read_line(&mut answer)?;
     Ok(matches!(answer.trim().to_lowercase().as_str(), "y" | "yes"))

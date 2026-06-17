@@ -15,21 +15,33 @@ pub fn cloche_server_entry() -> Value {
 
 /// Insert/update `cloche` inside the server map at `doc[map_keys...]`, creating
 /// intermediate objects as needed. Returns (updated_doc, changed).
-pub fn upsert_server(mut doc: Value, map_keys: &[&str]) -> (Value, bool) {
-    if !doc.is_object() {
+///
+/// Errors instead of clobbering when an existing value at the root, an
+/// intermediate key, or the `cloche` entry is present but not a JSON object: a
+/// non-object there means the config does not match the expected schema and we
+/// must not silently overwrite the user's data.
+pub fn upsert_server(mut doc: Value, map_keys: &[&str]) -> Result<(Value, bool), String> {
+    if doc.is_null() {
         doc = json!({});
+    } else if !doc.is_object() {
+        return Err("config root is not a JSON object".to_string());
     }
     let mut cursor = &mut doc;
     for key in map_keys {
-        if !cursor.get(*key).map(Value::is_object).unwrap_or(false) {
-            cursor[*key] = json!({});
+        match cursor.get(*key) {
+            Some(v) if v.is_object() => {}
+            Some(_) => return Err(format!("config key `{key}` is not an object")),
+            None => cursor[*key] = json!({}),
         }
         cursor = cursor.get_mut(*key).unwrap();
+    }
+    if cursor.get("cloche").is_some_and(|v| !v.is_object()) {
+        return Err("existing `cloche` server entry is not an object".to_string());
     }
     let entry = cloche_server_entry();
     let changed = cursor.get("cloche") != Some(&entry);
     cursor["cloche"] = entry;
-    (doc, changed)
+    Ok((doc, changed))
 }
 
 /// Read a JSON file into a Value, returning `json!({})` when absent and an error
@@ -66,7 +78,7 @@ pub fn register_json_client(
     apply: bool,
 ) -> Result<(bool, Option<PathBuf>), String> {
     let doc = read_json_or_empty(path)?;
-    let (updated, changed) = upsert_server(doc, map_keys);
+    let (updated, changed) = upsert_server(doc, map_keys)?;
     if !apply || !changed {
         return Ok((changed, None));
     }
@@ -79,12 +91,22 @@ pub fn register_json_client(
     Ok((true, bak))
 }
 
-/// The TOML block appended to ~/.codex/config.toml.
-pub const CODEX_BLOCK: &str = "\n[mcp_servers.cloche]\ncommand = \"cloche\"\nargs = [\"mcp\"]\n";
+/// The TOML block appended to ~/.codex/config.toml. Leading blank line keeps it
+/// visually separated from a preceding table.
+pub const CODEX_BLOCK: &str = "\n\n[mcp_servers.cloche]\ncommand = \"cloche\"\nargs = [\"mcp\"]\n";
 
-/// True when the Codex config text already declares the cloche server.
+/// True when the Codex config text already declares the cloche server table.
+/// Whitespace-insensitive and tolerant of the quoted-key header forms Codex may
+/// emit (`[mcp_servers."cloche"]`). Does not detect an inline `cloche = { .. }`
+/// under a `[mcp_servers]` table; Codex writes the dotted-table form, so we
+/// match that and its variants rather than depending on a full TOML parser.
 pub fn codex_block_present(text: &str) -> bool {
-    text.lines().any(|l| l.trim() == "[mcp_servers.cloche]")
+    text.lines().any(|l| {
+        let norm: String = l.chars().filter(|c| !c.is_whitespace()).collect();
+        norm == "[mcp_servers.cloche]"
+            || norm == "[mcp_servers.\"cloche\"]"
+            || norm == "[mcp_servers.'cloche']"
+    })
 }
 
 /// Register cloche in Codex's config.toml by appending the block when absent.
@@ -185,11 +207,12 @@ pub fn register_claude(apply: bool) -> ClientResult {
     }
 }
 
-/// Print the generic snippet for clients we do not auto-edit.
+/// Print the generic snippet for clients we do not auto-edit. Goes to stderr so
+/// that `--format json` stdout stays pure JSON for machine consumers.
 pub fn print_generic() {
-    println!("Add this to your MCP client config:");
-    println!("  {{ \"command\": \"cloche\", \"args\": [\"mcp\"] }}");
-    println!("(stdio MCP server; the command is `cloche mcp`)");
+    eprintln!("Add this to your MCP client config:");
+    eprintln!("  {{ \"command\": \"cloche\", \"args\": [\"mcp\"] }}");
+    eprintln!("(stdio MCP server; the command is `cloche mcp`)");
 }
 
 fn json_result(
@@ -271,7 +294,7 @@ mod tests {
 
     #[test]
     fn adds_cloche_to_empty_doc_for_claude() {
-        let (doc, changed) = upsert_server(json!({}), &["mcpServers"]);
+        let (doc, changed) = upsert_server(json!({}), &["mcpServers"]).unwrap();
         assert!(changed);
         assert_eq!(doc["mcpServers"]["cloche"]["command"], "cloche");
         assert_eq!(doc["mcpServers"]["cloche"]["args"][0], "mcp");
@@ -280,7 +303,7 @@ mod tests {
     #[test]
     fn preserves_existing_servers() {
         let start = json!({ "mcpServers": { "other": { "command": "x" } } });
-        let (doc, changed) = upsert_server(start, &["mcpServers"]);
+        let (doc, changed) = upsert_server(start, &["mcpServers"]).unwrap();
         assert!(changed);
         assert_eq!(doc["mcpServers"]["other"]["command"], "x");
         assert_eq!(doc["mcpServers"]["cloche"]["command"], "cloche");
@@ -288,15 +311,26 @@ mod tests {
 
     #[test]
     fn second_run_is_idempotent() {
-        let (doc, _) = upsert_server(json!({}), &["mcp", "servers"]);
-        let (_, changed) = upsert_server(doc, &["mcp", "servers"]);
+        let (doc, _) = upsert_server(json!({}), &["mcp", "servers"]).unwrap();
+        let (_, changed) = upsert_server(doc, &["mcp", "servers"]).unwrap();
         assert!(!changed);
     }
 
     #[test]
     fn nested_openclaw_path() {
-        let (doc, _) = upsert_server(json!({}), &["mcp", "servers"]);
+        let (doc, _) = upsert_server(json!({}), &["mcp", "servers"]).unwrap();
         assert_eq!(doc["mcp"]["servers"]["cloche"]["command"], "cloche");
+    }
+
+    #[test]
+    fn errors_instead_of_clobbering_non_object_map() {
+        // An existing key of the wrong type must not be silently replaced.
+        let start = json!({ "mcpServers": "oops" });
+        assert!(upsert_server(start, &["mcpServers"]).is_err());
+        let nested = json!({ "mcp": { "servers": ["a", "b"] } });
+        assert!(upsert_server(nested, &["mcp", "servers"]).is_err());
+        let bad_entry = json!({ "mcpServers": { "cloche": "not-an-object" } });
+        assert!(upsert_server(bad_entry, &["mcpServers"]).is_err());
     }
 
     #[test]
@@ -342,6 +376,16 @@ mod tests {
         ));
         assert!(!codex_block_present("[mcp_servers.other]\ncommand = \"x\""));
         assert!(!codex_block_present(""));
+    }
+
+    #[test]
+    fn detects_codex_block_header_variants() {
+        // Whitespace and quoted-key forms must still count as present so we do
+        // not append a duplicate table (which would make the TOML invalid).
+        assert!(codex_block_present("[ mcp_servers.cloche ]"));
+        assert!(codex_block_present("[mcp_servers.\"cloche\"]"));
+        assert!(codex_block_present("[mcp_servers.'cloche']"));
+        assert!(!codex_block_present("[mcp_servers.clochette]"));
     }
 
     #[test]
