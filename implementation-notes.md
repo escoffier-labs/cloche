@@ -114,3 +114,36 @@ Running log of decisions and tradeoffs not captured in commit messages or the sp
   or expect to revert real keybindings afterward.
 - `util::env_var` falls back to scraping desktop-process environ, so clearing
   XDG_CURRENT_DESKTOP in the child does NOT force a non-GNOME code path.
+
+## Clean-box onboarding test (2026-06-17)
+
+Tested cloche + brigade as a brand-new user on a pristine Ubuntu 24.04 LXC to
+catch "works on my machine" gaps. Findings:
+
+- MSRV vs distro Rust: Ubuntu 24.04 `apt install cargo` is rustc 1.75; cloche
+  needs 1.88. `cargo install cloche` fails for apt-Rust users. README now warns
+  and points at rustup. (rustup gave 1.96, built clean in ~40s; only extra dep
+  was build-essential for the linker.)
+- crates.io still serves cloche 0.3.0, NOT 0.4.0, despite the v0.4.0 release
+  commit + CHANGELOG. 0.4.0 (reels) was never published. ACTION: publish.
+- `--format json` was not machine-safe: generic MCP snippet, non-GNOME hotkey
+  steps, abort notice, and the confirm prompt all went to stdout and corrupted
+  JSON. Only surfaced on a clean box (no agent clients installed -> generic-print
+  path fires). Fixed: all human/prompt output -> stderr; decline still emits a
+  valid report. Caught by clean-box test + Codex review.
+- Headless coverage achieved: polish/mcp/doctor need no display; capture works
+  under Xvfb (import -window root); the GNOME gsettings bind works under
+  `dbus-run-session` + XDG_CURRENT_DESKTOP=GNOME + libglib2.0-bin
+  (gnome-settings-daemon-common provides the schema, libglib2.0-bin the
+  gsettings binary). Full `cloche setup --yes` goes all-green there.
+- AT-SPI missing dumps a raw Python traceback into capture warnings instead of a
+  clean message (cosmetic; text extraction is best-effort). Candidate cleanup.
+- cloche degrades correctly when gsettings is absent: warning + manual fallback,
+  no crash.
+
+Brigade (pipx install brigade-cli 0.12.0): full happy path clean -- repo and
+workspace quickstart, doctor, tools list, verify-harness, handoff
+draft/lint/doctor all OK. Only friction: README "60 seconds" block runs
+`brigade ...` right after `pipx install` in the same shell, but pipx warns
+`~/.local/bin` is not yet on PATH -> new user hits command-not-found. Suggest a
+`pipx ensurepath` + new-shell note between install and first command.

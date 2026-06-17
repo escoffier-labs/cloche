@@ -63,6 +63,11 @@ Reference: <https://developers.openai.com/codex/appshots>
 
 ## Install
 
+Cloche needs Rust 1.88 or newer. Distro packages can lag (Ubuntu 24.04's
+`apt install cargo` ships 1.75, which is too old); if `cargo install cloche`
+fails with an MSRV error, install a current toolchain with
+[rustup](https://rustup.rs) first.
+
 Install the latest release from crates.io:
 
 ```bash
