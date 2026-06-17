@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-06-17
+
+### Fixed
+- Windows build: cloche 0.5.0 failed to compile on Windows because the new
+  `setup` modules called Linux-only `util` helpers. Added Windows variants of
+  `env_var`/`run_status`/`run_output`, made `setup hotkey` point at Win+Shift+S
+  instead of attempting a Linux bind, skipped the hotkey verification check on
+  Windows, and resolved the home directory via `USERPROFILE`. Verified on
+  Windows 11 (clippy `-D warnings` clean, tests pass, `setup` behaves).
+
 ## [0.5.0] - 2026-06-17
 
 ### Added
