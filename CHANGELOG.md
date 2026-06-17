@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-17
+
 ### Added
 - `cloche setup`: one guided command that installs the `cloche-grab` hotkey
   script and binds it to Print (GNOME auto via gsettings, other desktops print
@@ -16,6 +18,20 @@ All notable changes to this project are documented here. The format follows
   mcp` handshake. `--print` dry-runs, `--yes` skips the prompt, `setup verify`
   re-checks, and `--format json` emits a stable report. Subcommands `setup
   hotkey`, `setup agent`, and `setup verify` run each piece on its own.
+
+### Fixed
+- `cloche setup --format json` now keeps stdout pure JSON: human guidance, the
+  confirmation prompt, and the decline notice go to stderr, and declining still
+  emits a valid report. Config edits no longer overwrite a valid-JSON but
+  non-object `mcpServers`/`mcp.servers`/`cloche` value, and the Codex TOML check
+  tolerates whitespace and quoted-key header forms so a duplicate
+  `[mcp_servers.cloche]` table is never appended.
+- AT-SPI text-extraction failures collapse to one concise warning instead of
+  dumping a multi-line Python traceback.
+
+### Docs
+- README notes the Rust 1.88 MSRV and that distro `cargo` packages can be too
+  old (use rustup).
 
 ## [0.4.0] - 2026-06-16
 
