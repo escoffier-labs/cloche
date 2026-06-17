@@ -8,6 +8,7 @@ mod contract;
 mod html;
 mod mcp;
 mod polish;
+mod setup;
 mod text;
 mod util;
 
@@ -31,5 +32,6 @@ pub fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
         Command::Schema(args) => cli::schema(args),
         Command::CodexPayload(args) => codex::payload(args),
         Command::Mcp(args) => mcp::run(args),
+        Command::Setup(args) => setup::run(args),
     }
 }

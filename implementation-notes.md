@@ -87,3 +87,30 @@ Running log of decisions and tradeoffs not captured in commit messages or the sp
 - Clipboard copy shells out (wl-copy / xclip) per the no-new-deps rule, in
   src/clipboard.rs with the selection logic split out pure for unit tests.
   Failures are capture warnings, not errors: the shot on disk is still good.
+
+## Setup onboarding (2026-06-17)
+
+- `cloche setup` automates the previously manual onboarding: install cloche-grab,
+  bind Print (GNOME), register the MCP server with agents, then verify. Spec:
+  docs/specs/2026-06-17-setup-onboarding.md, plan: ...-setup-onboarding-plan.md.
+- No new deps. JSON configs (.claude.json, openclaw.json) are edited with the
+  existing serde_json. Codex's config.toml is edited by guarded text-append
+  (append the static `[mcp_servers.cloche]` block only when absent) rather than
+  pulling in a TOML crate; the block is static so presence == configured.
+- OpenClaw MCP schema confirmed against the live config: top-level
+  `mcp.servers.<name> = {command, args}`. Resolved the spec's print-only fallback.
+- Pure/side-effect split for testability: desktop classification, slot
+  selection, gsettings array parsing, JSON upsert, codex-block detection, and
+  the tools/list parser are all unit-tested without a desktop or subprocess.
+- The MCP verify check is a REAL end-to-end handshake: it spawns `cloche mcp`,
+  writes initialize + tools/list, and asserts capture+polish are listed. This is
+  the actual proof an LLM can call cloche, not just a config-file presence check.
+- GNOME idempotency keys on the binding command via `is_cloche_command`, which
+  matches both the bare `cloche-grab` and any `*/cloche-grab` absolute path.
+  Found live: an exact-string match created a duplicate "Cloche Grab" binding
+  next to a pre-existing one that used an absolute path. Basename match fixes it.
+- `gsettings` ignores HOME (talks to dbus), so sandbox-HOME testing still hits
+  the real GNOME session. Test the binding path via dry-run (`bind_gnome(false)`)
+  or expect to revert real keybindings afterward.
+- `util::env_var` falls back to scraping desktop-process environ, so clearing
+  XDG_CURRENT_DESKTOP in the child does NOT force a non-GNOME code path.

@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `cloche setup`: one guided command that installs the `cloche-grab` hotkey
+  script and binds it to Print (GNOME auto via gsettings, other desktops print
+  exact steps), registers the `cloche mcp` server with detected agents (Claude
+  Code via the `claude` CLI or `~/.claude.json`, OpenClaw, Codex CLI; a generic
+  snippet otherwise; every edited file is backed up and the edit is idempotent),
+  then verifies the capture pipeline, the hotkey binding, and a live `cloche
+  mcp` handshake. `--print` dry-runs, `--yes` skips the prompt, `setup verify`
+  re-checks, and `--format json` emits a stable report. Subcommands `setup
+  hotkey`, `setup agent`, and `setup verify` run each piece on its own.
+
 ## [0.4.0] - 2026-06-16
 
 ### Added

@@ -162,6 +162,11 @@ cloche schema
 cloche schema --for polish
 cloche codex-payload --thread-id THREAD_ID /tmp/cloche-shot
 cloche mcp
+cloche setup
+cloche setup --print
+cloche setup hotkey
+cloche setup agent --client claude-code
+cloche setup verify --format json
 ```
 
 The old `appshots` command remains as an alias for the same code path.
@@ -186,6 +191,19 @@ Use `--presentation raw`, `--presentation card`, or `--presentation both` to con
 Bind one key to get a share-ready card on your clipboard: press it, drag a
 region, paste the polished card anywhere. The capture, polish, and clipboard
 copy all happen in cloche; only the key binding is set up per desktop.
+
+The fastest path is one command:
+
+```bash
+cloche setup
+```
+
+It installs `cloche-grab`, binds it to Print on GNOME (and prints the exact
+steps on KDE/sway/i3), registers the MCP server with any agent it detects, then
+verifies that capture, the hotkey, and the MCP server actually work. Run
+`cloche setup --print` to preview every change first, or `cloche setup verify`
+any time to re-check. The manual steps below are what `cloche setup` automates,
+and the fallback for unsupported desktops.
 
 The repo ships `scripts/cloche-grab.sh`, which wraps the capture and adds a
 desktop notification. Install it and bind it:
@@ -241,6 +259,8 @@ Other agents should treat Cloche as a normal subprocess tool. The core command h
 ## MCP Server
 
 `cloche mcp` runs a minimal stdio MCP server for clients that prefer the Model Context Protocol over direct subprocess calls. It speaks newline-delimited JSON-RPC 2.0 on stdin/stdout and exposes `capture`, `polish`, `list_windows`, `doctor`, `latest`, and `gallery` as tools. Each tool call shells out to the same binary, so the JSON contract is identical to the CLI.
+
+`cloche setup agent` registers this server with Claude Code, OpenClaw, and Codex CLI automatically (backing up any config it edits, and skipping clients already configured). The manual config below is for other clients or if you prefer to wire it yourself.
 
 Register it like any stdio MCP server:
 
