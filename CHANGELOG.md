@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `cloche reels render --engine hyperframes`: a second Reels engine alongside
+  Remotion. It generates a self-contained HyperFrames composition (HTML is the
+  source of truth for video) from the input video plus AppReels-shaped cue JSON,
+  renders it through `npx hyperframes`, and emits the same `ReelRenderResult`
+  contract (`engine` now reflects the chosen engine instead of always
+  `remotion`). The composition is lint-clean (0 errors) and mirrors the Remotion
+  reel look: framed browser chrome, timed caption clips, title and outro cards.
+  Override the launcher with `CLOCHE_HYPERFRAMES_CMD`. `--keep-props` keeps the
+  staged project (with its `index.html`) for debugging.
+- Shared brand between still and motion: `--palette` and `--style-seed` pin the
+  reel to the same Cloche presentation palette as a still `shot-card`. The
+  hyperframes engine writes a `DESIGN.md` (HyperFrames' Visual Identity Gate
+  format) from that palette and uses the exact hex values in the composition, so
+  the reel and the card trace back to one identity.
+- `--workers` for the hyperframes engine (default `1`). Some environments
+  corrupt frames during parallel capture, which fails the ffmpeg encode with
+  `image2 ... unspecified size`; single-worker is the safe default, raise it for
+  faster renders on stable setups.
+
 ## [0.5.1] - 2026-06-17
 
 ### Fixed

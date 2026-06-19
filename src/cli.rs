@@ -21,6 +21,7 @@ use crate::contract::ImageInfo;
 use crate::contract::ReelRenderResult;
 use crate::contract::VideoInfo;
 use crate::polish;
+use crate::reel_hyperframes;
 use crate::text;
 use crate::util;
 
@@ -110,10 +111,26 @@ pub struct ReelRenderArgs {
     /// Output height.
     #[arg(long, default_value_t = 1920)]
     pub height: u32,
-    /// Render engine. Only `remotion` is implemented.
+    /// Render engine: `remotion` (vendored node project) or `hyperframes`
+    /// (HTML composition rendered via `npx hyperframes`).
     #[arg(long, value_enum, default_value = "remotion")]
     pub engine: ReelRenderEngine,
-    /// Keep the generated Remotion props JSON next to the output.
+    /// Cloche palette for the reel brand (hyperframes engine). Defaults to the
+    /// seed's random pick. Use the same name as `cloche capture --style-seed`
+    /// to match a still card.
+    #[arg(long, value_parser = palette_name_parser())]
+    pub palette: Option<String>,
+    /// Style seed for the reel brand (hyperframes engine). Same seed + palette
+    /// reproduces the same card identity.
+    #[arg(long)]
+    pub style_seed: Option<u64>,
+    /// Parallel render workers (hyperframes engine). Defaults to 1: some
+    /// environments corrupt frames during parallel capture, which fails the
+    /// ffmpeg encode. Raise it for faster renders if your setup is stable.
+    #[arg(long, default_value_t = 1)]
+    pub workers: u32,
+    /// Keep the generated props/composition project next to the output for
+    /// debugging (Remotion: props JSON; HyperFrames: the staged project dir).
     #[arg(long)]
     pub keep_props: bool,
     /// Output format; only `json` exists today.
@@ -124,6 +141,16 @@ pub struct ReelRenderArgs {
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
 pub enum ReelRenderEngine {
     Remotion,
+    Hyperframes,
+}
+
+impl ReelRenderEngine {
+    fn name(self) -> &'static str {
+        match self {
+            ReelRenderEngine::Remotion => "remotion",
+            ReelRenderEngine::Hyperframes => "hyperframes",
+        }
+    }
 }
 
 fn palette_name_parser() -> clap::builder::PossibleValuesParser {
@@ -418,15 +445,39 @@ fn run_reels_render(args: ReelRenderArgs) -> ReelRenderResult {
         .unwrap_or_else(|| inferred_reel_duration_ms(cues.as_ref()));
 
     if errors.is_empty() {
+        let cues = cues.unwrap_or_else(|| serde_json::json!({}));
         match args.engine {
             ReelRenderEngine::Remotion => render_reel_with_remotion(
                 &args,
-                cues.unwrap_or_else(|| serde_json::json!({})),
+                cues,
                 duration_ms,
                 &mut errors,
                 &mut props_path,
                 &mut output,
             ),
+            ReelRenderEngine::Hyperframes => {
+                let style = resolve_reel_style(args.style_seed, args.palette.as_deref());
+                let title = args
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| "Cloche Reel".to_string());
+                reel_hyperframes::render(
+                    &args.input,
+                    &args.out,
+                    &cues,
+                    duration_ms,
+                    args.fps,
+                    args.width,
+                    args.height,
+                    args.workers,
+                    &style,
+                    &title,
+                    args.keep_props,
+                    &mut errors,
+                    &mut props_path,
+                    &mut output,
+                );
+            }
         }
     }
 
@@ -438,13 +489,27 @@ fn run_reels_render(args: ReelRenderArgs) -> ReelRenderResult {
         ok: output.is_some() && errors.is_empty(),
         version: VERSION.to_string(),
         created_at: Utc::now(),
-        engine: "remotion".to_string(),
+        engine: args.engine.name().to_string(),
         input: util::canonical_or_original(&args.input),
         output,
         props: props_path,
         duration_ms,
         warnings,
         errors,
+    }
+}
+
+/// Resolve the reel brand the same way `cloche capture` / `polish` pick a card
+/// style, so a reel can be pinned to the exact palette of a still shot-card.
+fn resolve_reel_style(seed: Option<u64>, palette: Option<&str>) -> polish::PresentationStyle {
+    match (seed, palette) {
+        (Some(seed), Some(name)) => {
+            polish::style_with_palette(seed, name).unwrap_or_else(|| polish::style_from_seed(seed))
+        }
+        (Some(seed), None) => polish::style_from_seed(seed),
+        (None, Some(name)) => polish::style_with_palette(polish::random_seed(), name)
+            .unwrap_or_else(polish::random_style),
+        (None, None) => polish::random_style(),
     }
 }
 

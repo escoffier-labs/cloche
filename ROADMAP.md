@@ -38,6 +38,11 @@ Reels should merge the useful Appreels work into Cloche without making video fee
 
 - Experimental Remotion rendering is available through `cloche reels render --engine remotion`.
   It consumes an existing MP4 plus AppReels-shaped cue JSON and outputs a vertical MP4.
+- A second engine, `--engine hyperframes`, generates a HyperFrames HTML
+  composition from the same input and renders it via `npx hyperframes`. It
+  writes a Cloche-branded `DESIGN.md` and reuses the still `shot-card` palette
+  (`--palette`/`--style-seed`), so Shots and Reels already share one identity for
+  this engine. No vendored node project; the launcher is `CLOCHE_HYPERFRAMES_CMD`.
 - Add a `cloche reels` command group once the integration starts.
 - Bring over Appreels capture and render pieces behind Cloche naming:
   - `record` for raw short desktop captures.
