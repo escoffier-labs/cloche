@@ -1,6 +1,7 @@
-//! Discovery of past captures on disk: scan roots for `cloche-shot*` /
-//! `appshot*` directories, deserialize their `metadata.json`, and summarize
-//! them for the `gallery`, `latest`, and `preview` commands.
+//! Discovery of past captures on disk: scan roots for flat `cloche-shot*.json`
+//! sidecars (the current layout) and, for back-compat, legacy `cloche-shot*` /
+//! `appshot*` directories with a `metadata.json` inside. Deserialize each and
+//! summarize them for the `gallery`, `latest`, and `preview` commands.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -27,13 +28,23 @@ pub struct CaptureSummary {
 
 pub fn find_captures(roots: Vec<PathBuf>, limit: usize) -> Vec<CaptureSummary> {
     let roots = if roots.is_empty() {
-        vec![PathBuf::from("."), PathBuf::from("/tmp")]
+        vec![
+            crate::backends::default_gallery_dir(),
+            PathBuf::from("."),
+            PathBuf::from("/tmp"),
+        ]
     } else {
         roots
     };
     let mut captures = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     for root in roots {
-        collect_captures(&root, &mut captures);
+        // Canonicalize so the same dir reached via different paths (e.g. "." and
+        // the gallery dir) is scanned once.
+        let key = std::fs::canonicalize(&root).unwrap_or(root.clone());
+        if seen.insert(key) {
+            collect_captures(&root, &mut captures);
+        }
     }
     captures.sort_by_key(|capture| std::cmp::Reverse(capture.created_at));
     captures.truncate(limit);
@@ -46,16 +57,22 @@ fn collect_captures(root: &Path, captures: &mut Vec<CaptureSummary>) {
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
         if !name.starts_with("cloche-shot") && !name.starts_with("appshot") {
             continue;
         }
-        if let Ok(metadata) = read_metadata(&path) {
+        // Flat layout: `<stem>.json` sidecar. Legacy layout: a directory with a
+        // `metadata.json` inside.
+        let metadata = if path.is_dir() {
+            read_metadata(&path)
+        } else if name.ends_with(".json") {
+            read_metadata_file(&path)
+        } else {
+            continue;
+        };
+        if let Ok(metadata) = metadata {
             captures.push(CaptureSummary {
                 output_dir: metadata.output_dir,
                 created_at: metadata.created_at,
@@ -69,7 +86,13 @@ fn collect_captures(root: &Path, captures: &mut Vec<CaptureSummary>) {
     }
 }
 
-pub fn read_metadata(capture_dir: &Path) -> Result<AppshotResult, Box<dyn std::error::Error>> {
-    let bytes = util::read(&capture_dir.join("metadata.json"))?;
+/// Read a flat `<stem>.json` metadata sidecar.
+pub fn read_metadata_file(path: &Path) -> Result<AppshotResult, Box<dyn std::error::Error>> {
+    let bytes = util::read(path)?;
     Ok(serde_json::from_slice(&bytes)?)
+}
+
+/// Read a legacy folder-style capture's `metadata.json`.
+pub fn read_metadata(capture_dir: &Path) -> Result<AppshotResult, Box<dyn std::error::Error>> {
+    read_metadata_file(&capture_dir.join("metadata.json"))
 }

@@ -12,7 +12,9 @@ use crate::util;
 pub struct CodexPayloadArgs {
     #[arg(long)]
     pub thread_id: String,
-    #[arg(value_name = "CAPTURE_DIR")]
+    /// A capture's flat `<stem>.json` sidecar, or a legacy capture directory
+    /// (its `metadata.json` is read).
+    #[arg(value_name = "CAPTURE")]
     pub capture_dir: PathBuf,
     #[arg(long, default_value = "Cloche shot attached.")]
     pub message: String,
@@ -35,7 +37,12 @@ pub fn payload(args: CodexPayloadArgs) -> Result<ExitCode, Box<dyn std::error::E
 /// Pure payload assembly: reads capture metadata and returns the `turn/start`
 /// JSON envelope without printing. Split out so the wire contract is testable.
 fn build_payload(args: &CodexPayloadArgs) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let metadata_path = args.capture_dir.join("metadata.json");
+    // Accept either a flat `<stem>.json` sidecar or a legacy capture directory.
+    let metadata_path = if args.capture_dir.is_dir() {
+        args.capture_dir.join("metadata.json")
+    } else {
+        args.capture_dir.clone()
+    };
     let metadata_bytes = util::read(&metadata_path)?;
     let metadata: AppshotResult = serde_json::from_slice(&metadata_bytes)?;
     if !metadata.ok {
@@ -179,6 +186,18 @@ mod tests {
                 .expect("path")
                 .ends_with("shot.png")
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn flat_json_sidecar_path_is_accepted() {
+        // Passing the metadata file directly (flat layout) works, not just a dir.
+        let dir = temp_dir("flat-json");
+        write_fixture(&dir, true, true, None);
+        let mut a = args(&dir);
+        a.capture_dir = dir.join("metadata.json");
+        let payload = build_payload(&a).expect("payload");
+        assert_eq!(payload["method"], "turn/start");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -553,9 +553,22 @@ fn session_info() -> SessionInfo {
     }
 }
 
-pub fn default_output_dir() -> PathBuf {
+/// Central gallery directory where captures land by default, so shots collect
+/// in one tidy place instead of a new folder in whatever directory you happened
+/// to run `cloche` from. Resolves to `$HOME/Pictures/Cloche` (or the Windows
+/// equivalent), falling back to a local `cloche-shots` dir when no home is set.
+pub fn default_gallery_dir() -> PathBuf {
+    match crate::util::env_var("HOME").or_else(|| crate::util::env_var("USERPROFILE")) {
+        Some(home) => PathBuf::from(home).join("Pictures").join("Cloche"),
+        None => PathBuf::from("cloche-shots"),
+    }
+}
+
+/// Timestamped filename stem shared by a capture's flat artifacts:
+/// `<stem>.png` (card), `<stem>.raw.png`, `<stem>.json`, `<stem>.txt`.
+pub fn shot_stem() -> String {
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
-    PathBuf::from(format!("cloche-shot-{stamp}"))
+    format!("cloche-shot-{stamp}")
 }
 
 #[cfg(test)]
