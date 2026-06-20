@@ -147,3 +147,49 @@ draft/lint/doctor all OK. Only friction: README "60 seconds" block runs
 `brigade ...` right after `pipx install` in the same shell, but pipx warns
 `~/.local/bin` is not yet on PATH -> new user hits command-not-found. Suggest a
 `pipx ensurepath` + new-shell note between install and first command.
+
+## HyperFrames reel engine (2026-06-19)
+
+Added a second `cloche reels render` engine alongside Remotion, plus the
+palette -> DESIGN.md bridge so a reel shares the still `shot-card` identity.
+
+- **Engine shape.** Reused the existing `ReelRenderEngine` enum + dispatch seam
+  rather than a new command. `engine` in `ReelRenderResult` was hardcoded
+  `"remotion"`; now it reflects the chosen engine via `ReelRenderEngine::name`.
+- **No vendored node project.** Unlike the Remotion engine (which ships a
+  `remotion/` package in the crate), HyperFrames is invoked through
+  `npx hyperframes`. `CLOCHE_HYPERFRAMES_CMD` overrides the launcher
+  (whitespace-split) for non-standard setups. This keeps the crate small and
+  matches how HyperFrames is meant to be run.
+- **Composition generator is a pure fn** (`composition_html`) so it is unit
+  tested without I/O. It emits a standalone `index.html` (no `<template>`),
+  registers `window.__timelines`, is deterministic (no `Math.random`/`Date.now`/
+  `repeat: -1`), and HTML-escapes all user text.
+- **Lint-driven fixes (caught by `npx hyperframes lint`):**
+  1. Timed `<div>`s MUST have `class="clip"` or the runtime shows them for the
+     whole composition (caption/title/outro would never hide). This was a real
+     correctness bug, not cosmetic.
+  2. System-font keywords (`-apple-system`, `ui-sans-serif`, `Segoe UI`) are not
+     auto-resolvable and hard-fail the render. Font stack reduced to
+     `Inter, sans-serif` (HyperFrames fetches Inter from Google Fonts).
+  3. Switched CSS from `[data-composition-id="..."]` to `#cloche-reel` (added an
+     `id` to the root) to clear the self-attribute-selector warnings.
+  Final composition: 0 lint errors. Remaining warnings (self-id styling,
+  gsap-studio-edit) are benign for headless rendering.
+- **Multi-worker encode failure.** On this environment, parallel frame capture
+  (`--workers >= 2`) corrupts a frame and the ffmpeg image2 encode dies with
+  `Could not find codec parameters ... unspecified size` (HyperFrames suggests
+  `--docker`). Isolated to worker count, NOT quality. So the bridge exposes
+  `--workers` and defaults it to **1** for reliability; users raise it on stable
+  setups. Doctor reports all-green including Docker, so it is a parallel-capture
+  race, not a missing dependency.
+- **Palette bridge (`src/design.rs`).** `design_md(style, title)` converts a
+  `PresentationStyle` (the same struct behind `cloche polish`/`capture`) into a
+  HyperFrames `DESIGN.md` with the 4 Visual-Identity-Gate sections. The engine
+  both writes that DESIGN.md into the staged project AND uses the exact hex
+  values in the composition CSS, so still and motion share one brand.
+  `--palette`/`--style-seed` on `reels render` resolve the style the same way
+  capture does (`resolve_reel_style`).
+- **Verified end-to-end:** `cloche reels render --engine hyperframes` produced a
+  valid h264 1080x1920 ~4s MP4; extracted frames confirm the title card,
+  bottom caption, and aurora-teal palette render at their scheduled times.
