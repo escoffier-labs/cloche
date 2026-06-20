@@ -26,6 +26,13 @@ All notable changes to this project are documented here. The format follows
   `image2 ... unspecified size`; single-worker is the safe default, raise it for
   faster renders on stable setups.
 
+### Fixed
+- HyperFrames reel title/outro cards now wrap long unbreakable tokens
+  (`overflow-wrap: anywhere`) instead of bleeding off the canvas. A URL outro
+  like `escoffierlabs.dev/academy` previously clipped at the frame edge. Also
+  finished the CSS switch to `#id` selectors (a few descendant rules still used
+  the attribute selector).
+
 ## [0.5.1] - 2026-06-17
 
 ### Fixed

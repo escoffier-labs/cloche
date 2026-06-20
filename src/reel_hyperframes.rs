@@ -195,14 +195,14 @@ data-duration=\"{outro_secs:.3}\" data-track-index=\"101\"><div class=\"card-tex
       #{comp_id} .chrome {{ width: 100%; max-height: 100%; aspect-ratio: 16 / 10; border-radius: 24px; overflow: hidden; background: #101820; box-shadow: 0 44px 110px rgba(4,12,18,0.46), 0 18px 38px rgba(4,12,18,0.34); }}\n\
       #{comp_id} .toolbar {{ height: 54px; display: flex; align-items: center; gap: 12px; padding: 0 20px; background: rgba(11,18,24,0.94); }}\n\
       #{comp_id} .dot {{ width: 14px; height: 14px; border-radius: 99px; flex: 0 0 auto; }}\n\
-      #{comp_id} .dot-a {{ background: #ff6b6b; }} [data-composition-id=\"{comp_id}\"] .dot-b {{ background: #feca57; }} [data-composition-id=\"{comp_id}\"] .dot-c {{ background: #1dd1a1; }}\n\
+      #{comp_id} .dot-a {{ background: #ff6b6b; }} #{comp_id} .dot-b {{ background: #feca57; }} #{comp_id} .dot-c {{ background: #1dd1a1; }}\n\
       #{comp_id} .toolbar-title {{ margin-left: 12px; color: rgba(248,251,255,0.82); font-size: 20px; font-weight: 700; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}\n\
       #{comp_id} .video-shell {{ position: relative; height: calc(100% - 54px); background: #070b10; overflow: hidden; }}\n\
       #{comp_id} #clip-video {{ width: 100%; height: 100%; object-fit: contain; }}\n\
       #{comp_id} .caption {{ position: absolute; left: 96px; right: 96px; z-index: 30; padding: 24px 30px; border-radius: 20px; background: rgba(7,13,19,0.80); border: 1px solid rgba(255,255,255,0.18); box-shadow: 0 20px 42px rgba(0,0,0,0.30); font-size: 42px; font-weight: 850; line-height: 1.14; text-align: center; }}\n\
-      #{comp_id} .caption-top {{ top: 116px; }} [data-composition-id=\"{comp_id}\"] .caption-bottom {{ bottom: 116px; }}\n\
+      #{comp_id} .caption-top {{ top: 116px; }} #{comp_id} .caption-bottom {{ bottom: 116px; }}\n\
       #{comp_id} .card {{ position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 96px; background: rgba(6,11,16,0.86); }}\n\
-      #{comp_id} .card-text {{ max-width: 820px; color: #ffffff; font-size: 74px; font-weight: 900; line-height: 1.04; text-align: center; }}\n\
+      #{comp_id} .card-text {{ max-width: 820px; color: #ffffff; font-size: 74px; font-weight: 900; line-height: 1.04; text-align: center; overflow-wrap: anywhere; word-break: break-word; }}\n\
     </style>\n\
     <script src=\"{gsap}\"></script>\n\
     <script>\n\
@@ -443,6 +443,19 @@ mod tests {
         assert!(html.contains("id=\"cap-0\" class=\"clip caption"));
         assert!(html.contains("id=\"title-card\" class=\"clip card\""));
         assert!(html.contains("id=\"outro-card\" class=\"clip card\""));
+    }
+
+    #[test]
+    fn card_text_wraps_long_unbreakable_tokens() {
+        // A long URL outro (escoffierlabs.dev/academy) is one token and would
+        // overflow the card edge without wrapping.
+        assert!(comp_html().contains("overflow-wrap: anywhere"));
+    }
+
+    #[test]
+    fn css_uses_id_selectors_not_descendant_attribute_selectors() {
+        // The root carries data-composition-id, but CSS should style via #id.
+        assert!(!comp_html().contains("[data-composition-id=\"cloche-reel\"] ."));
     }
 
     #[test]
