@@ -26,6 +26,12 @@ All notable changes to this project are documented here. The format follows
   `image2 ... unspecified size`; single-worker is the safe default, raise it for
   faster renders on stable setups.
 
+### Changed
+- HyperFrames reel browser frame now sizes to the source footage and fills most
+  of the canvas, instead of a fixed small 16:10 box. The engine probes the input
+  video aspect with ffprobe and contains it within the canvas, so a taller
+  recording yields a taller on-screen frame.
+
 ### Fixed
 - HyperFrames reel title/outro cards now wrap long unbreakable tokens
   (`overflow-wrap: anywhere`) instead of bleeding off the canvas. A URL outro

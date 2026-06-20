@@ -38,6 +38,8 @@ pub struct ReelComposition<'a> {
     pub duration_ms: u64,
     pub width: u32,
     pub height: u32,
+    /// Source video aspect ratio (width / height); sizes the browser frame.
+    pub video_aspect: f64,
     pub style: &'a PresentationStyle,
     pub captions: Vec<Caption>,
     pub title_card_ms: u64,
@@ -54,6 +56,38 @@ fn esc(text: &str) -> String {
 
 fn secs(ms: u64) -> f64 {
     ms as f64 / 1000.0
+}
+
+/// Probe the source video's aspect ratio (width / height) with ffprobe.
+/// Falls back to 16:10 if ffprobe is missing or the output can't be parsed.
+fn probe_video_aspect(input: &Path) -> f64 {
+    const DEFAULT: f64 = 1.6;
+    let out = std::process::Command::new("ffprobe")
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=p=0",
+        ])
+        .arg(input)
+        .output();
+    let Ok(out) = out else { return DEFAULT };
+    if !out.status.success() {
+        return DEFAULT;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut parts = text.trim().split(',');
+    match (
+        parts.next().and_then(|w| w.trim().parse::<f64>().ok()),
+        parts.next().and_then(|h| h.trim().parse::<f64>().ok()),
+    ) {
+        (Some(w), Some(h)) if w > 0.0 && h > 0.0 => w / h,
+        _ => DEFAULT,
+    }
 }
 
 /// Parse AppReels-shaped cues into the typed pieces the composition needs.
@@ -117,6 +151,26 @@ pub fn composition_html(comp: &ReelComposition) -> String {
     let outro_start = (total - outro_secs).max(0.0);
     let title = esc(comp.title);
     let outro = esc(comp.outro_text.as_deref().unwrap_or(comp.title));
+
+    // Size the browser frame to the footage and let it fill most of the canvas
+    // (instead of a fixed small 16:10 box). Contain the source aspect within the
+    // canvas minus a small margin; a taller recording yields a taller frame.
+    const H_MARGIN: f64 = 28.0;
+    const V_MARGIN: f64 = 104.0;
+    let aspect = if comp.video_aspect.is_finite() && comp.video_aspect > 0.0 {
+        comp.video_aspect
+    } else {
+        1.6
+    };
+    let avail_w = (comp.width as f64 - 2.0 * H_MARGIN).max(1.0);
+    let avail_h = (comp.height as f64 - 2.0 * V_MARGIN).max(1.0);
+    let (chrome_w, chrome_h) = if avail_w / avail_h > aspect {
+        (avail_h * aspect, avail_h)
+    } else {
+        (avail_w, avail_w / aspect)
+    };
+    let chrome_w = chrome_w.round() as i64;
+    let chrome_h = chrome_h.round() as i64;
 
     // Caption clips: one distinct track each so overlapping cues never trip the
     // "same-track clips cannot overlap" lint. Visual layering is via z-index.
@@ -191,8 +245,8 @@ data-duration=\"{outro_secs:.3}\" data-track-index=\"101\"><div class=\"card-tex
       #{comp_id} .glow {{ position: absolute; filter: blur(64px); z-index: 1; opacity: 0.55; }}\n\
       #{comp_id} .glow-a {{ inset: 4% 14% 56% 8%; background: {glow_a}; transform: rotate(-12deg); }}\n\
       #{comp_id} .glow-b {{ inset: 48% 8% 7% 18%; background: {glow_b}; transform: rotate(9deg); }}\n\
-      #{comp_id} .stage {{ position: absolute; inset: 88px; display: flex; align-items: center; justify-content: center; z-index: 10; }}\n\
-      #{comp_id} .chrome {{ width: 100%; max-height: 100%; aspect-ratio: 16 / 10; border-radius: 24px; overflow: hidden; background: #101820; box-shadow: 0 44px 110px rgba(4,12,18,0.46), 0 18px 38px rgba(4,12,18,0.34); }}\n\
+      #{comp_id} .stage {{ position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 10; }}\n\
+      #{comp_id} .chrome {{ width: {chrome_w}px; height: {chrome_h}px; border-radius: 24px; overflow: hidden; background: #101820; box-shadow: 0 44px 110px rgba(4,12,18,0.46), 0 18px 38px rgba(4,12,18,0.34); }}\n\
       #{comp_id} .toolbar {{ height: 54px; display: flex; align-items: center; gap: 12px; padding: 0 20px; background: rgba(11,18,24,0.94); }}\n\
       #{comp_id} .dot {{ width: 14px; height: 14px; border-radius: 99px; flex: 0 0 auto; }}\n\
       #{comp_id} .dot-a {{ background: #ff6b6b; }} #{comp_id} .dot-b {{ background: #feca57; }} #{comp_id} .dot-c {{ background: #1dd1a1; }}\n\
@@ -231,6 +285,8 @@ data-duration=\"{outro_secs:.3}\" data-track-index=\"101\"><div class=\"card-tex
         total = total,
         w = comp.width,
         h = comp.height,
+        chrome_w = chrome_w,
+        chrome_h = chrome_h,
         title_secs = title_secs,
         title_fade = (title_secs - 0.4).max(0.0),
         outro_start = outro_start,
@@ -298,6 +354,7 @@ pub fn render(
         duration_ms,
         width,
         height,
+        video_aspect: probe_video_aspect(input),
         style,
         captions: captions_from_cues(cues),
         title_card_ms: card_ms(cues, "titleCard", 900),
@@ -386,22 +443,39 @@ mod tests {
         })
     }
 
-    fn comp_html() -> String {
-        let style = polish::style_with_palette(3, "midnight-sky").expect("known palette");
-        let cues = sample_cues();
-        let comp = ReelComposition {
+    fn comp_with_aspect(aspect: f64) -> ReelComposition<'static> {
+        // Leak a style so the returned struct can own a 'static reference in tests.
+        let style: &'static PresentationStyle = Box::leak(Box::new(
+            polish::style_with_palette(3, "midnight-sky").expect("known palette"),
+        ));
+        ReelComposition {
             video_file: "input.mp4",
             title: "Cloche Demo",
             duration_ms: 8000,
             width: 1080,
             height: 1920,
-            style: &style,
-            captions: captions_from_cues(&cues),
+            video_aspect: aspect,
+            style,
+            captions: captions_from_cues(&sample_cues()),
             title_card_ms: 1200,
             outro_card_ms: 1500,
             outro_text: Some("Subscribe".to_string()),
-        };
-        composition_html(&comp)
+        }
+    }
+
+    fn comp_html() -> String {
+        composition_html(&comp_with_aspect(1.6))
+    }
+
+    #[test]
+    fn chrome_size_scales_with_footage_aspect() {
+        // A taller (portrait) source must yield a taller browser frame than a
+        // wide one, and the wide frame should be width-limited near 1080-2*28.
+        let wide = composition_html(&comp_with_aspect(1.6));
+        let tall = composition_html(&comp_with_aspect(0.75));
+        assert!(wide.contains("width: 1024px"));
+        // tall frame is width-limited too but much taller: 1024 / 0.75 ~= 1365.
+        assert!(tall.contains("height: 1365px"));
     }
 
     #[test]
