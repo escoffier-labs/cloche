@@ -558,7 +558,7 @@ fn session_info() -> SessionInfo {
 /// to run `cloche` from. Resolves to `$HOME/Pictures/Cloche` (or the Windows
 /// equivalent), falling back to a local `cloche-shots` dir when no home is set.
 pub fn default_gallery_dir() -> PathBuf {
-    match util::env_var("HOME").or_else(|| util::env_var("USERPROFILE")) {
+    match crate::util::env_var("HOME").or_else(|| crate::util::env_var("USERPROFILE")) {
         Some(home) => PathBuf::from(home).join("Pictures").join("Cloche"),
         None => PathBuf::from("cloche-shots"),
     }
