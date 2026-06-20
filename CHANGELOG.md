@@ -27,6 +27,15 @@ All notable changes to this project are documented here. The format follows
   faster renders on stable setups.
 
 ### Changed
+- **Flat capture layout.** A capture no longer creates a folder-per-shot with
+  fixed filenames. Instead it writes flat files that share one timestamp stem:
+  `<stem>.png` (the shareable card, or the raw shot when no card is made),
+  `<stem>.raw.png` (raw), `<stem>.json` (metadata), and `<stem>.txt` (text).
+  Captures also default to a central gallery dir (`~/Pictures/Cloche`) instead
+  of the current working directory, so shots collect in one place. Override with
+  `--out-dir`. `gallery`, `latest`, and `preview` read the flat layout and still
+  read legacy folder-style captures; `codex-payload` and `preview` accept a flat
+  `<stem>.json` sidecar (or a legacy directory).
 - HyperFrames reel browser frame now sizes to the source footage and fills most
   of the canvas, instead of a fixed small 16:10 box. The engine probes the input
   video aspect with ffprobe and contains it within the canvas, so a taller

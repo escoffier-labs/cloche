@@ -14,6 +14,7 @@ use crate::backends;
 use crate::captures::CaptureSummary;
 use crate::captures::find_captures;
 use crate::captures::read_metadata;
+use crate::captures::read_metadata_file;
 use crate::contract::AppshotResult;
 use crate::contract::CaptureTarget;
 use crate::contract::ImageDetail;
@@ -161,6 +162,9 @@ fn palette_name_parser() -> clap::builder::PossibleValuesParser {
 pub struct CaptureArgs {
     #[arg(long, value_enum, default_value = "active")]
     pub target: CaptureTarget,
+    /// Directory to write the capture's flat files into (`<stem>.png` card,
+    /// `<stem>.raw.png`, `<stem>.json`, `<stem>.txt`). Defaults to the central
+    /// gallery dir (~/Pictures/Cloche).
     #[arg(long)]
     pub out_dir: Option<PathBuf>,
     #[arg(long)]
@@ -268,7 +272,16 @@ pub enum PresentationMode {
 }
 
 pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
-    let output_dir = args.out_dir.unwrap_or_else(backends::default_output_dir);
+    // Flat layout: all artifacts for one shot share a timestamp stem and sit
+    // directly in the gallery dir, instead of a folder-per-shot with fixed
+    // filenames. `<stem>.png` is the shareable card (or the raw shot when no
+    // card is made), `<stem>.raw.png` the raw, `<stem>.json`/`.txt` the sidecars.
+    let output_dir = args.out_dir.unwrap_or_else(backends::default_gallery_dir);
+    let stem = backends::shot_stem();
+    let will_make_card = matches!(
+        args.presentation,
+        PresentationMode::Card | PresentationMode::Both
+    );
     let mut warnings = Vec::new();
     let mut errors = Vec::new();
     let mut backend = None;
@@ -280,7 +293,14 @@ pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>
     if let Err(err) = util::create_dir_all(&output_dir) {
         errors.push(err.to_string());
     } else {
-        let image_path = output_dir.join("shot.png");
+        // Raw goes to `<stem>.raw.png` when a card will own `<stem>.png`;
+        // otherwise the raw itself is the primary `<stem>.png`.
+        let raw_name = if will_make_card {
+            format!("{stem}.raw.png")
+        } else {
+            format!("{stem}.png")
+        };
+        let image_path = output_dir.join(raw_name);
         match backends::capture(backends::CaptureRequest {
             target: args.target,
             output_path: &image_path,
@@ -297,11 +317,8 @@ pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>
                 window = success.window;
                 match image_info(&image_path, args.detail) {
                     Ok(info) => {
-                        if matches!(
-                            args.presentation,
-                            PresentationMode::Card | PresentationMode::Both
-                        ) {
-                            let card_path = output_dir.join("shot-card.png");
+                        if will_make_card {
+                            let card_path = output_dir.join(format!("{stem}.png"));
                             let style = args
                                 .style_seed
                                 .map(polish::style_from_seed)
@@ -333,7 +350,7 @@ pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>
     }
 
     let text = if image.is_some() {
-        text::extract(&output_dir, &mut warnings)
+        text::extract(&output_dir.join(format!("{stem}.txt")), &mut warnings)
     } else {
         Default::default()
     };
@@ -367,7 +384,7 @@ pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>
     };
 
     if let Ok(metadata) = serde_json::to_vec_pretty(&result) {
-        let _ = util::write(&output_dir.join("metadata.json"), metadata);
+        let _ = util::write(&output_dir.join(format!("{stem}.json")), metadata);
     }
     print_json(&result)?;
     Ok(if result.ok {
@@ -856,31 +873,57 @@ pub fn latest(args: LatestArgs) -> Result<ExitCode, Box<dyn std::error::Error>> 
 }
 
 pub fn preview(args: PreviewArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
-    let capture_dir = match args.capture_dir {
-        Some(path) => path,
-        None => find_captures(args.root, 1)
-            .into_iter()
-            .next()
-            .map(|capture| capture.output_dir)
-            .ok_or("no Cloche captures found")?,
-    };
-    let metadata = read_metadata(&capture_dir)?;
-    let path = if args.raw {
-        metadata
-            .image
-            .as_ref()
-            .map(|image| image.path.clone())
-            .ok_or("capture does not include a raw image")?
-    } else {
-        metadata
-            .presentation_image
-            .as_ref()
-            .or(metadata.image.as_ref())
-            .map(|image| image.path.clone())
-            .ok_or("capture does not include an image")?
+    let path = match args.capture_dir {
+        Some(target) => resolve_preview_path(&target, args.raw)?,
+        None => {
+            let capture = find_captures(args.root, 1)
+                .into_iter()
+                .next()
+                .ok_or("no Cloche captures found")?;
+            pick_preview_image(
+                args.raw,
+                capture.image.as_ref(),
+                capture.presentation_image.as_ref(),
+            )?
+        }
     };
     open_path(&path)?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// Resolve an explicit preview target to an image path. Accepts a flat
+/// `<stem>.json` sidecar, a legacy capture directory, or a direct image file.
+fn resolve_preview_path(target: &Path, raw: bool) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let metadata = if target.is_dir() {
+        read_metadata(target)?
+    } else if target.extension().and_then(|e| e.to_str()) == Some("json") {
+        read_metadata_file(target)?
+    } else {
+        // A direct image path: open it as given.
+        return Ok(target.to_path_buf());
+    };
+    pick_preview_image(
+        raw,
+        metadata.image.as_ref(),
+        metadata.presentation_image.as_ref(),
+    )
+}
+
+fn pick_preview_image(
+    raw: bool,
+    image: Option<&ImageInfo>,
+    presentation: Option<&ImageInfo>,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if raw {
+        image
+            .map(|info| info.path.clone())
+            .ok_or_else(|| "capture does not include a raw image".into())
+    } else {
+        presentation
+            .or(image)
+            .map(|info| info.path.clone())
+            .ok_or_else(|| "capture does not include an image".into())
+    }
 }
 
 pub fn schema(args: SchemaArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
