@@ -1,12 +1,12 @@
 <h1 align="center">Cloche</h1>
 
 <p align="center">
-  <em>Open-source desktop capture for polished shots, short reels, and agent workflows.</em>
+  <strong>An open-source desktop screenshot CLI that turns any window into a polished, share-ready card, prints stable JSON, and works the same from your shell, a hotkey, or an AI agent.</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/escoffier-labs/cloche/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/escoffier-labs/cloche/ci.yml?branch=master&style=for-the-badge&label=CI&logo=githubactions&logoColor=white" alt="CI status"></a>
-  <a href="https://github.com/escoffier-labs/cloche/releases"><img src="https://img.shields.io/github/v/release/escoffier-labs/cloche?include_prereleases&style=for-the-badge&label=release" alt="GitHub release"></a>
+  <a href="https://crates.io/crates/cloche"><img src="https://img.shields.io/crates/v/cloche?style=for-the-badge&label=crates.io&logo=rust&logoColor=white" alt="crates.io version"></a>
   <img src="https://img.shields.io/badge/Rust-2024-b7410e?style=for-the-badge&logo=rust&logoColor=white" alt="Rust 2024">
   <img src="https://img.shields.io/badge/platform-Linux_first-2563eb?style=for-the-badge&logo=linux&logoColor=white" alt="Linux first">
   <img src="https://img.shields.io/badge/Windows-supported-0078d4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows supported">
@@ -15,22 +15,28 @@
 </p>
 
 <p align="center">
-  <img src="docs/cloche-settings-card-2026-06-07.png" alt="Cloche shot of Linux Settings" width="720">
+  <strong>Website:</strong> <a href="https://cloche.escoffierlabs.dev">cloche.escoffierlabs.dev</a>
 </p>
 
 <p align="center">
-  <img src="docs/cloche-calculator-card-2026-06-07.png" alt="Cloche shot of Linux Calculator" width="420">
+  <img src="docs/cloche-settings-card-2026-06-07.png" alt="Cloche shot of Linux Settings, framed as a polished presentation card" width="720">
 </p>
 
-Cloche is an open-source desktop capture tool for people and agents. It captures the active app or window, writes polished artifacts plus metadata, and prints stable JSON so scripts, local tools, and AI agents can all use the same command.
+<p align="center">
+  <img src="docs/cloche-calculator-card-2026-06-07.png" alt="Cloche shot of Linux Calculator, framed as a polished presentation card" width="420">
+</p>
 
-The name comes from the glass or silver dome used to present something cleanly. Cloche lifts what is on your screen, frames it, and makes it ready to share.
+Cloche is an open-source desktop capture CLI for people and AI agents. It captures the active app or window, frames the result as a polished presentation card, writes raw images plus metadata, and prints stable JSON so scripts, local tools, and coding agents can all drive the same command. The screenshots above are real Cloche output, not mockups: a raw capture dropped onto a gradient backdrop with a rounded window and a soft shadow.
+
+What makes it different is that the capture, the polish, and the machine-readable output are one tool. Most screenshot apps are GUI-only and stop at a PNG; Cloche works headless from a shell, binds to a single hotkey, or runs as an MCP server, and every path emits the same JSON contract. The name comes from the glass dome used to present a dish cleanly: Cloche lifts what is on your screen, frames it, and makes it ready to share.
 
 The first production mode is **Shots**: polished screenshots with raw files, metadata, optional text extraction, and gallery helpers. The roadmap adds **Reels** for short screen recordings, then **GIF export** for lightweight loops.
 
 This repo started as `appshots`. The `appshots` binary remains as a compatibility alias while `cloche` becomes the primary command.
 
-## Current Capabilities
+## What it does
+
+Cloche is a command-line screenshot and screen-capture tool that produces share-ready presentation cards and stable JSON on Linux and Windows. It does the whole capture pipeline in one binary: grab the pixels, polish them onto a gradient backdrop, write the metadata, and hand a clean JSON result to whatever called it.
 
 - Captures the active window, a selected window, the full screen, or an interactively selected region.
 - Writes `shot.png`, `metadata.json`, optional `text.txt`, and a polished `shot-card.png`.
@@ -60,6 +66,25 @@ OpenAI documents Appshots as a macOS app feature for Codex. The Codex repository
 Linux and Windows users still need a reliable way to create those captures from a normal CLI. Cloche fills that capture side while staying independent of any one agent stack. Use it with Codex, OpenClaw, Claude Code, Hermes, a local MCP client, or a plain shell script.
 
 Reference: <https://developers.openai.com/codex/appshots>
+
+## Why not other screenshot tools?
+
+- **Flameshot, Spectacle, GNOME Screenshot, Greenshot, ShareX** are excellent interactive GUI tools, built for a human clicking and annotating. They do not present a stable command surface for scripts, they do not emit machine-readable JSON, and they do not run headless from an agent process. Cloche is CLI-first and JSON-first; it uses tools like Flameshot for the region-select step but owns the polish, metadata, and contract.
+- **`grim` / `scrot` / ImageMagick `import` / `maim`** capture pixels and stop there. You still hand-roll the framing, the gradient, the metadata, and the JSON. Cloche wraps the same low-level capture and does the rest in one command.
+- **`carbon-now`, `silicon`, `ray.so`** make beautiful cards out of source code or arbitrary images, not live windows. Cloche captures the actual app and then frames it, and `cloche polish <image>` covers the "I already have a screenshot" case.
+- **The macOS Appshots app for Codex** is the inspiration, but it is macOS-only and tied to one agent stack. Cloche fills the same capture role on Linux and Windows while staying agent-neutral: use it with Codex, OpenClaw, Claude Code, Hermes, any MCP client, or a plain shell script.
+
+## What Cloche is not
+
+Cloche is a local capture tool, not a service or an annotation suite.
+
+It does not:
+
+- run a background daemon, tray app, or scheduler
+- upload, sync, or phone home with your captures
+- annotate, blur, or redact (it frames what is on screen; review before you share)
+- record audio or do OCR (text extraction is best-effort via the OS accessibility layer only)
+- replace your editor or your sharing host; it writes local files and a JSON receipt, and you take it from there
 
 ## Install
 

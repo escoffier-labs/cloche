@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation and website
+    url: https://cloche.escoffierlabs.dev
+    about: Install steps, command reference, and backend notes. Check here before filing.
+  - name: Security report
+    url: https://github.com/escoffier-labs/cloche/security/policy
+    about: Do not file security issues publicly. See SECURITY.md.

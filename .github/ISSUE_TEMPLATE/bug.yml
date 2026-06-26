@@ -1,0 +1,58 @@
+name: Bug report
+description: Something is broken in Cloche itself, such as capture, polish, the gallery, setup, the MCP server, or docs.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you run, and what did you expect versus what you got?
+      placeholder: |
+        I ran `cloche capture --target active --format json` and got X.
+        I expected Y.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Cloche version
+      description: Output of `cloche --version`.
+      placeholder: cloche 0.5.1
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS / desktop
+      options:
+        - Linux (X11)
+        - Linux (Wayland - wlroots/sway)
+        - Linux (Wayland - GNOME)
+        - Linux (Wayland - KDE)
+        - Windows
+        - Other (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor output
+      description: Paste the output of `cloche doctor --format json`. This reports which capture backends are available and is the most useful single thing for a backend bug.
+      render: json
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Full output
+      description: Paste the full stdout + stderr from the failing command. Redact personal paths if you want, but keep enough for us to reproduce.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: scrub
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I have removed any personal hostnames, tokens, or sensitive on-screen content from the report and any attached images.
+          required: true

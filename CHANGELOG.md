@@ -48,6 +48,15 @@ All notable changes to this project are documented here. The format follows
   finished the CSS switch to `#id` selectors (a few descendant rules still used
   the attribute selector).
 
+### Docs
+- README reworked for adoption: a what/why/how-it-differs opening with the
+  real shot cards as the lead proof, a crates.io version badge, a prominent
+  website link, and new "What it does", "Why not other screenshot tools?", and
+  "What Cloche is not" sections.
+- Added maintainer-health files: `SECURITY.md`, `CONTRIBUTING.md`,
+  `CODE_OF_CONDUCT.md`, GitHub issue templates (bug + feature, blank issues
+  disabled with contact links), and a pull request template.
+
 ## [0.5.1] - 2026-06-17
 
 ### Fixed
