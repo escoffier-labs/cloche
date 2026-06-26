@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/cloche-social-preview.jpg" alt="Cloche banner" width="900">
+</p>
+
 <h1 align="center">Cloche</h1>
 
 <p align="center">
