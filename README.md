@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <strong>Website:</strong> <a href="https://cloche.escoffierlabs.dev">cloche.escoffierlabs.dev</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/escoffier-labs/cloche/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/escoffier-labs/cloche/ci.yml?branch=master&style=for-the-badge&label=CI&logo=githubactions&logoColor=white" alt="CI status"></a>
   <a href="https://crates.io/crates/cloche"><img src="https://img.shields.io/crates/v/cloche?style=for-the-badge&label=crates.io&logo=rust&logoColor=white" alt="crates.io version"></a>
   <img src="https://img.shields.io/badge/Rust-2024-b7410e?style=for-the-badge&logo=rust&logoColor=white" alt="Rust 2024">
@@ -16,10 +20,6 @@
   <img src="https://img.shields.io/badge/Windows-supported-0078d4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows supported">
   <img src="https://img.shields.io/badge/MCP-optional-7c3aed?style=for-the-badge" alt="Optional MCP server">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-2ea043?style=for-the-badge" alt="Apache-2.0 license"></a>
-</p>
-
-<p align="center">
-  <strong>Website:</strong> <a href="https://cloche.escoffierlabs.dev">cloche.escoffierlabs.dev</a>
 </p>
 
 <p align="center">
@@ -50,45 +50,6 @@ Cloche is a command-line screenshot and screen-capture tool that produces share-
 - Provides `gallery`, `latest`, and `preview` helpers for capture history.
 - Runs directly as a CLI, or as a small stdio MCP server through `cloche mcp`.
 - Keeps `appshots` as a compatibility command during the rename.
-
-## Modes
-
-**Shots** are available now. A Shot is a still capture with raw and presentation images, metadata, and optional extracted text.
-
-**Reels** are planned next. A Reel will be a short desktop recording with the same Cloche presentation system, cursor emphasis, captions, and stable metadata. The existing Appreels prototype is the starting point for this mode.
-
-**GIF export** is planned after Reels. GIFs will be generated from finished Reels as a delivery format, not recorded as the primary source format.
-
-## Why Cloche Exists
-
-OpenAI documents Appshots as a macOS app feature for Codex. The Codex repository can already resume threads that contain local images through app-server v2 `turn/start` input:
-
-```json
-{ "type": "localImage", "path": "/absolute/path/to/shot.png", "detail": "high" }
-```
-
-Linux and Windows users still need a reliable way to create those captures from a normal CLI. Cloche fills that capture side while staying independent of any one agent stack. Use it with Codex, OpenClaw, Claude Code, Hermes, a local MCP client, or a plain shell script.
-
-Reference: <https://developers.openai.com/codex/appshots>
-
-## Why not other screenshot tools?
-
-- **Flameshot, Spectacle, GNOME Screenshot, Greenshot, ShareX** are excellent interactive GUI tools, built for a human clicking and annotating. They do not present a stable command surface for scripts, they do not emit machine-readable JSON, and they do not run headless from an agent process. Cloche is CLI-first and JSON-first; it uses tools like Flameshot for the region-select step but owns the polish, metadata, and contract.
-- **`grim` / `scrot` / ImageMagick `import` / `maim`** capture pixels and stop there. You still hand-roll the framing, the gradient, the metadata, and the JSON. Cloche wraps the same low-level capture and does the rest in one command.
-- **`carbon-now`, `silicon`, `ray.so`** make beautiful cards out of source code or arbitrary images, not live windows. Cloche captures the actual app and then frames it, and `cloche polish <image>` covers the "I already have a screenshot" case.
-- **The macOS Appshots app for Codex** is the inspiration, but it is macOS-only and tied to one agent stack. Cloche fills the same capture role on Linux and Windows while staying agent-neutral: use it with Codex, OpenClaw, Claude Code, Hermes, any MCP client, or a plain shell script.
-
-## What Cloche is not
-
-Cloche is a local capture tool, not a service or an annotation suite.
-
-It does not:
-
-- run a background daemon, tray app, or scheduler
-- upload, sync, or phone home with your captures
-- annotate, blur, or redact (it frames what is on screen; review before you share)
-- record audio or do OCR (text extraction is best-effort via the OS accessibility layer only)
-- replace your editor or your sharing host; it writes local files and a JSON receipt, and you take it from there
 
 ## Install
 
@@ -204,6 +165,26 @@ cloche setup verify --format json
 ```
 
 The old `appshots` command remains as an alias for the same code path.
+
+## Modes
+
+**Shots** are available now. A Shot is a still capture with raw and presentation images, metadata, and optional extracted text.
+
+**Reels** are planned next. A Reel will be a short desktop recording with the same Cloche presentation system, cursor emphasis, captions, and stable metadata. The existing Appreels prototype is the starting point for this mode.
+
+**GIF export** is planned after Reels. GIFs will be generated from finished Reels as a delivery format, not recorded as the primary source format.
+
+## Why Cloche Exists
+
+OpenAI documents Appshots as a macOS app feature for Codex. The Codex repository can already resume threads that contain local images through app-server v2 `turn/start` input:
+
+```json
+{ "type": "localImage", "path": "/absolute/path/to/shot.png", "detail": "high" }
+```
+
+Linux and Windows users still need a reliable way to create those captures from a normal CLI. Cloche fills that capture side while staying independent of any one agent stack. Use it with Codex, OpenClaw, Claude Code, Hermes, a local MCP client, or a plain shell script.
+
+Reference: <https://developers.openai.com/codex/appshots>
 
 ## Output Files
 
@@ -364,6 +345,25 @@ powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1
 ```
 
 Archives are written under `dist/`. Tagged GitHub releases are packaged by `.github/workflows/release.yml` for Linux and Windows.
+
+## Why not other screenshot tools?
+
+- **Flameshot, Spectacle, GNOME Screenshot, Greenshot, ShareX** are excellent interactive GUI tools, built for a human clicking and annotating. They do not present a stable command surface for scripts, they do not emit machine-readable JSON, and they do not run headless from an agent process. Cloche is CLI-first and JSON-first; it uses tools like Flameshot for the region-select step but owns the polish, metadata, and contract.
+- **`grim` / `scrot` / ImageMagick `import` / `maim`** capture pixels and stop there. You still hand-roll the framing, the gradient, the metadata, and the JSON. Cloche wraps the same low-level capture and does the rest in one command.
+- **`carbon-now`, `silicon`, `ray.so`** make beautiful cards out of source code or arbitrary images, not live windows. Cloche captures the actual app and then frames it, and `cloche polish <image>` covers the "I already have a screenshot" case.
+- **The macOS Appshots app for Codex** is the inspiration, but it is macOS-only and tied to one agent stack. Cloche fills the same capture role on Linux and Windows while staying agent-neutral: use it with Codex, OpenClaw, Claude Code, Hermes, any MCP client, or a plain shell script.
+
+## What Cloche is not
+
+Cloche is a local capture tool, not a service or an annotation suite.
+
+It does not:
+
+- run a background daemon, tray app, or scheduler
+- upload, sync, or phone home with your captures
+- annotate, blur, or redact (it frames what is on screen; review before you share)
+- record audio or do OCR (text extraction is best-effort via the OS accessibility layer only)
+- replace your editor or your sharing host; it writes local files and a JSON receipt, and you take it from there
 
 ## Roadmap
 
