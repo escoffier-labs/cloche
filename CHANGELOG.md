@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-27
+
 ### Added
 - `cloche reels render --engine hyperframes`: a second Reels engine alongside
   Remotion. It generates a self-contained HyperFrames composition (HTML is the
