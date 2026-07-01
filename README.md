@@ -13,13 +13,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/escoffier-labs/cloche/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/escoffier-labs/cloche/ci.yml?branch=master&style=for-the-badge&label=CI&logo=githubactions&logoColor=white" alt="CI status"></a>
-  <a href="https://crates.io/crates/cloche"><img src="https://img.shields.io/crates/v/cloche?style=for-the-badge&label=crates.io&logo=rust&logoColor=white" alt="crates.io version"></a>
-  <img src="https://img.shields.io/badge/Rust-2024-b7410e?style=for-the-badge&logo=rust&logoColor=white" alt="Rust 2024">
-  <img src="https://img.shields.io/badge/platform-Linux_first-2563eb?style=for-the-badge&logo=linux&logoColor=white" alt="Linux first">
-  <img src="https://img.shields.io/badge/Windows-supported-0078d4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows supported">
-  <img src="https://img.shields.io/badge/MCP-optional-7c3aed?style=for-the-badge" alt="Optional MCP server">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-2ea043?style=for-the-badge" alt="Apache-2.0 license"></a>
+  <a href="https://github.com/escoffier-labs/cloche/actions/workflows/ci.yml"><img src="https://shieldcn.dev/github/ci/escoffier-labs/cloche.svg?branch=master&workflow=ci.yml" alt="CI status"></a>
+  <a href="https://crates.io/crates/cloche"><img src="https://shieldcn.dev/crates/cloche.svg" alt="crates.io version"></a>
+  <img src="https://shieldcn.dev/badge/Rust-2024-b7410e.svg?logo=rust&logoColor=white" alt="Rust 2024">
+  <img src="https://shieldcn.dev/badge/platform-Linux_first-2563eb.svg?logo=linux&logoColor=white" alt="Linux first">
+  <img src="https://shieldcn.dev/badge/Windows-supported-0078d4.svg?logo=windows&logoColor=white" alt="Windows supported">
+  <img src="https://shieldcn.dev/badge/MCP-optional-7c3aed.svg" alt="Optional MCP server">
+  <a href="LICENSE"><img src="https://shieldcn.dev/badge/license-Apache--2.0-2ea043.svg" alt="Apache-2.0 license"></a>
 </p>
 
 <p align="center">
