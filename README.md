@@ -5,82 +5,43 @@
 <h1 align="center">Cloche</h1>
 
 <p align="center">
-  <strong>An open-source desktop screenshot CLI that turns any window into a polished, share-ready card, prints stable JSON, and works the same from your shell, a hotkey, or an AI agent.</strong>
+  <img src="docs/assets/marks/cloche-circle.svg" alt="" width="40" height="40">
 </p>
 
 <p align="center">
-  <strong>Website:</strong> <a href="https://cloche.escoffierlabs.dev">cloche.escoffierlabs.dev</a>
+  <strong>Lift the dome. Present the shot.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/escoffier-labs/cloche/actions/workflows/ci.yml"><img src="https://shieldcn.dev/github/ci/escoffier-labs/cloche.svg?branch=master&workflow=ci.yml" alt="CI status"></a>
-  <a href="https://crates.io/crates/cloche"><img src="https://shieldcn.dev/crates/cloche.svg" alt="crates.io version"></a>
-  <img src="https://shieldcn.dev/badge/Rust-2024-b7410e.svg?logo=rust&logoColor=white" alt="Rust 2024">
-  <img src="https://shieldcn.dev/badge/platform-Linux_first-2563eb.svg?logo=linux&logoColor=white" alt="Linux first">
-  <img src="https://shieldcn.dev/badge/Windows-supported-0078d4.svg?logo=windows&logoColor=white" alt="Windows supported">
-  <img src="https://shieldcn.dev/badge/MCP-optional-7c3aed.svg" alt="Optional MCP server">
-  <a href="LICENSE"><img src="https://shieldcn.dev/badge/license-Apache--2.0-2ea043.svg" alt="Apache-2.0 license"></a>
+  Agent-neutral desktop capture: polished share-ready frames, stable JSON on stdout, optional MCP. For READMEs, hotkeys, and coding agents.
 </p>
 
 <p align="center">
-  <img src="docs/cloche-settings-card-2026-06-07.png" alt="Cloche shot of Linux Settings, framed as a polished presentation card" width="720">
+  <a href="https://brigade.tools/cloche">Website</a> &middot; <a href="#install">Install</a>
 </p>
 
 <p align="center">
-  <img src="docs/cloche-calculator-card-2026-06-07.png" alt="Cloche shot of Linux Calculator, framed as a polished presentation card" width="420">
+  <img src="https://shieldcn.dev/github/ci/escoffier-labs/cloche.svg?branch=master&workflow=ci.yml" alt="CI status">
+  <img src="https://shieldcn.dev/badge/license-MIT-green.svg" alt="MIT license">
 </p>
-
-Cloche is an open-source desktop capture CLI for people and AI agents. It captures the active app or window, frames the result as a polished presentation card, writes raw images plus metadata, and prints stable JSON so scripts, local tools, and coding agents can all drive the same command. The screenshots above are real Cloche output, not mockups: a raw capture dropped onto a gradient backdrop with a rounded window and a soft shadow.
-
-What makes it different is that the capture, the polish, and the machine-readable output are one tool. Most screenshot apps are GUI-only and stop at a PNG; Cloche works headless from a shell, binds to a single hotkey, or runs as an MCP server, and every path emits the same JSON contract. The name comes from the glass dome used to present a dish cleanly: Cloche lifts what is on your screen, frames it, and makes it ready to share.
-
-The first production mode is **Shots**: polished screenshots with raw files, metadata, optional text extraction, and gallery helpers. The roadmap adds **Reels** for short screen recordings, then **GIF export** for lightweight loops.
-
-This repo started as `appshots`. The `appshots` binary remains as a compatibility alias while `cloche` becomes the primary command.
-
-## What it does
-
-Cloche is a command-line screenshot and screen-capture tool that produces share-ready presentation cards and stable JSON on Linux and Windows. It does the whole capture pipeline in one binary: grab the pixels, polish them onto a gradient backdrop, write the metadata, and hand a clean JSON result to whatever called it.
-
-- Captures the active window, a selected window, the full screen, or an interactively selected region.
-- Writes `shot.png`, `metadata.json`, optional `text.txt`, and a polished `shot-card.png`.
-- Styles any existing image into the same presentation card with `cloche polish`.
-- Emits stable JSON on stdout for agents and automation.
-- Extracts best-effort visible or accessible app text when the OS exposes it.
-- Provides `gallery`, `latest`, and `preview` helpers for capture history.
-- Runs directly as a CLI, or as a small stdio MCP server through `cloche mcp`.
-- Keeps `appshots` as a compatibility command during the rename.
 
 ## Install
 
-Cloche needs Rust 1.88 or newer. Distro packages can lag (Ubuntu 24.04's
-`apt install cargo` ships 1.75, which is too old); if `cargo install cloche`
-fails with an MSRV error, install a current toolchain with
-[rustup](https://rustup.rs) first.
-
-Install the latest release from crates.io:
-
 ```bash
 cargo install cloche
+# or from git
+cargo install --git https://github.com/escoffier-labs/cloche
 ```
 
-Build and install from a local checkout:
+## What it does
 
-```bash
-cargo install --path . --bins
-```
+| | Job | What you get |
+|---|---|---|
+| **Capture** | Any window or region | Desktop frames without a browser extension stack |
+| **Present** | Polished share cards | README- and social-ready framing, not a raw dump |
+| **Emit** | Stable JSON stdout | Shells, hotkeys, and agents can consume the result |
+| **Serve** | Optional MCP | Expose capture to coding agents when you want it |
 
-Or use the install script:
-
-```bash
-bash scripts/install.sh
-```
-
-On Windows:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/install.ps1
-```
 
 ## Quick Start
 
