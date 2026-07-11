@@ -168,6 +168,10 @@ Bind one key to get a share-ready card on your clipboard: press it, drag a
 region, paste the polished card anywhere. The capture, polish, and clipboard
 copy all happen in cloche; only the key binding is set up per desktop.
 
+![Cloche hotkey workflow](docs/assets/hotkey-workflow.svg)
+
+Generated from [`docs/assets/workflows/hotkey.json`](docs/assets/workflows/hotkey.json) with `plating workflow`.
+
 The fastest path is one command:
 
 ```bash
