@@ -1,0 +1,86 @@
+{
+  "title": "From hotkey to share-ready capture",
+  "eyebrow": "CLOCHE WORKFLOW",
+  "description": "One binding opens the selector, writes capture artifacts, and leaves a polished card ready to paste.",
+  "meta": "Shots now · Reels next",
+  "columns": [
+    {
+      "title": "TRIGGER",
+      "nodes": [
+        {
+          "id": "hotkey",
+          "label": "desktop hotkey",
+          "detail": "Print · custom binding"
+        },
+        {
+          "id": "mcp",
+          "label": "agent request",
+          "detail": "MCP or CLI"
+        }
+      ]
+    },
+    {
+      "title": "CAPTURE",
+      "nodes": [
+        {
+          "id": "target",
+          "label": "target picker",
+          "detail": "active · window · region",
+          "kind": "focus",
+          "badge": "human"
+        },
+        {
+          "id": "raw",
+          "label": "shot.png",
+          "detail": "raw frame"
+        }
+      ]
+    },
+    {
+      "title": "PRESENT",
+      "nodes": [
+        {
+          "id": "polish",
+          "label": "polish card",
+          "detail": "palette · shadow · frame",
+          "kind": "accent"
+        },
+        {
+          "id": "metadata",
+          "label": "metadata.json",
+          "detail": "stable stdout schema"
+        }
+      ]
+    },
+    {
+      "title": "SHARE",
+      "nodes": [
+        {
+          "id": "clipboard",
+          "label": "clipboard",
+          "detail": "paste anywhere",
+          "kind": "success"
+        },
+        {
+          "id": "gallery",
+          "label": "HTML gallery",
+          "detail": "recent captures"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {"from": "hotkey", "to": "target"},
+    {"from": "mcp", "to": "target"},
+    {"from": "target", "to": "raw"},
+    {"from": "raw", "to": "polish"},
+    {"from": "raw", "to": "metadata"},
+    {"from": "polish", "to": "clipboard"},
+    {"from": "metadata", "to": "gallery"}
+  ],
+  "context": {
+    "title": "SETUP CONTRACT",
+    "body": "cloche setup installs the helper, prints desktop-specific steps, and verifies capture.",
+    "detail": "Region capture waits for a human; tests should use non-interactive paths."
+  }
+}
