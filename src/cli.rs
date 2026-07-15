@@ -271,6 +271,35 @@ pub enum PresentationMode {
     Both,
 }
 
+fn postprocess_capture<CopyPng, ExtractText>(
+    clipboard: bool,
+    image_path: Option<&Path>,
+    text_path: &Path,
+    warnings: &mut Vec<String>,
+    mut copy_png: CopyPng,
+    mut extract_text: ExtractText,
+) -> crate::contract::TextInfo
+where
+    CopyPng: FnMut(&Path) -> Result<(), String>,
+    ExtractText: FnMut(&Path, &mut Vec<String>) -> crate::contract::TextInfo,
+{
+    if clipboard {
+        match image_path {
+            Some(path) => {
+                if let Err(err) = copy_png(path) {
+                    warnings.push(format!("Clipboard copy failed: {err}"));
+                }
+            }
+            None => warnings.push("Clipboard copy skipped: no image was captured.".to_string()),
+        }
+    }
+
+    match image_path {
+        Some(_) => extract_text(text_path, warnings),
+        None => Default::default(),
+    }
+}
+
 pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
     // Flat layout: all artifacts for one shot share a timestamp stem and sit
     // directly in the gallery dir, instead of a folder-per-shot with fixed
@@ -349,23 +378,18 @@ pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>
         }
     }
 
-    let text = if image.is_some() {
-        text::extract(&output_dir.join(format!("{stem}.txt")), &mut warnings)
-    } else {
-        Default::default()
-    };
-
-    if args.clipboard {
-        let clipboard_image = presentation_image.as_ref().or(image.as_ref());
-        match clipboard_image {
-            Some(info) => {
-                if let Err(err) = crate::clipboard::copy_png(&info.path) {
-                    warnings.push(format!("Clipboard copy failed: {err}"));
-                }
-            }
-            None => warnings.push("Clipboard copy skipped: no image was captured.".to_string()),
-        }
-    }
+    let clipboard_image = presentation_image
+        .as_ref()
+        .or(image.as_ref())
+        .map(|info| info.path.as_path());
+    let text = postprocess_capture(
+        args.clipboard,
+        clipboard_image,
+        &output_dir.join(format!("{stem}.txt")),
+        &mut warnings,
+        crate::clipboard::copy_png,
+        text::extract,
+    );
 
     let result = AppshotResult {
         ok: image.is_some() && errors.is_empty(),
@@ -1018,6 +1042,32 @@ mod tests {
     fn write_test_image(path: &Path, width: u32, height: u32) {
         let image = image::RgbaImage::from_pixel(width, height, image::Rgba([180, 180, 180, 255]));
         image.save(path).expect("write test image");
+    }
+
+    #[test]
+    fn capture_publishes_clipboard_before_best_effort_text_extraction() {
+        use std::cell::RefCell;
+
+        let steps = RefCell::new(Vec::new());
+        let mut warnings = Vec::new();
+        let text = postprocess_capture(
+            true,
+            Some(Path::new("/tmp/shot.png")),
+            Path::new("/tmp/shot.txt"),
+            &mut warnings,
+            |_| {
+                steps.borrow_mut().push("clipboard");
+                Ok(())
+            },
+            |_, _| {
+                steps.borrow_mut().push("text");
+                Default::default()
+            },
+        );
+
+        assert_eq!(steps.into_inner(), vec!["clipboard", "text"]);
+        assert!(!text.available);
+        assert!(warnings.is_empty());
     }
 
     #[test]
