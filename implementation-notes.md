@@ -87,6 +87,9 @@ Running log of decisions and tradeoffs not captured in commit messages or the sp
 - Clipboard copy shells out (wl-copy / xclip) per the no-new-deps rule, in
   src/clipboard.rs with the selection logic split out pure for unit tests.
   Failures are capture warnings, not errors: the shot on disk is still good.
+- Clipboard publication runs before best-effort text extraction. AT-SPI can use
+  its full three-second timeout, and making clipboard copy wait for it caused
+  immediate pastes to retrieve the preceding capture on X11.
 
 ## Setup onboarding (2026-06-17)
 
