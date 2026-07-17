@@ -103,8 +103,9 @@ pub struct ReelRenderArgs {
     /// Total output duration in milliseconds. Defaults to the longest cue or 6s.
     #[arg(long)]
     pub duration_ms: Option<u64>,
-    /// Frames per second.
-    #[arg(long, default_value_t = 30)]
+    /// Frames per second. Overlay motion (zooms, cards, captions) animates at
+    /// this rate, so 60 stays smooth even when the source footage is 30.
+    #[arg(long, default_value_t = 60)]
     pub fps: u32,
     /// Output width.
     #[arg(long, default_value_t = 1080)]
@@ -445,7 +446,7 @@ pub fn reels_render(args: ReelRenderArgs) -> Result<ExitCode, Box<dyn std::error
 }
 
 fn run_reels_render(args: ReelRenderArgs) -> ReelRenderResult {
-    let mut warnings = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
     let mut errors = Vec::new();
     let mut props_path = None;
     let mut output = None;
@@ -492,6 +493,7 @@ fn run_reels_render(args: ReelRenderArgs) -> ReelRenderResult {
                 &args,
                 cues,
                 duration_ms,
+                &mut warnings,
                 &mut errors,
                 &mut props_path,
                 &mut output,
@@ -558,6 +560,7 @@ fn render_reel_with_remotion(
     args: &ReelRenderArgs,
     cues: serde_json::Value,
     duration_ms: u64,
+    warnings: &mut Vec<String>,
     errors: &mut Vec<String>,
     props_path: &mut Option<PathBuf>,
     output: &mut Option<VideoInfo>,
@@ -571,10 +574,11 @@ fn render_reel_with_remotion(
         return;
     }
 
-    let staged_input = match stage_remotion_video_asset(&remotion_dir, &args.input, errors) {
-        Some(path) => path,
-        None => return,
-    };
+    let staged_input =
+        match stage_remotion_video_asset(&remotion_dir, &args.input, args.fps, warnings, errors) {
+            Some(path) => path,
+            None => return,
+        };
     let props = serde_json::json!({
         "inputVideo": staged_input.clone(),
         "title": args.title.clone().unwrap_or_else(|| "Cloche Reel".to_string()),
@@ -615,6 +619,13 @@ fn render_reel_with_remotion(
                     &output_arg,
                     "--props",
                     &props_arg,
+                    // Crisp frame extraction and encode: Remotion's defaults
+                    // (JPEG quality 80, default CRF) read soft on text-heavy
+                    // screen footage.
+                    "--jpeg-quality",
+                    "95",
+                    "--crf",
+                    "16",
                     "--log",
                     "error",
                     "--overwrite",
@@ -687,9 +698,39 @@ fn default_reel_props_path(out: &Path) -> PathBuf {
     out.with_extension("remotion-props.json")
 }
 
+/// ffmpeg args that normalize footage for Remotion: constant frame rate at the
+/// composition fps so frame extraction seeks exactly, plus clean timestamps.
+/// Screen recordings (x11grab and friends) often carry variable/imperfect
+/// timestamps that make `<OffthreadVideo>` seeks judder.
+fn remotion_stage_transcode_args(input: &Path, fps: u32, output: &Path) -> Vec<String> {
+    vec![
+        "-y".to_string(),
+        "-i".to_string(),
+        input.display().to_string(),
+        "-an".to_string(),
+        "-vf".to_string(),
+        "format=yuv420p".to_string(),
+        "-r".to_string(),
+        fps.to_string(),
+        "-fps_mode".to_string(),
+        "cfr".to_string(),
+        "-c:v".to_string(),
+        "libx264".to_string(),
+        "-preset".to_string(),
+        "veryfast".to_string(),
+        "-crf".to_string(),
+        "16".to_string(),
+        "-movflags".to_string(),
+        "+faststart".to_string(),
+        output.display().to_string(),
+    ]
+}
+
 fn stage_remotion_video_asset(
     remotion_dir: &Path,
     input: &Path,
+    fps: u32,
+    warnings: &mut Vec<String>,
     errors: &mut Vec<String>,
 ) -> Option<String> {
     let asset_dir = remotion_dir.join("public").join("cloche-inputs");
@@ -697,6 +738,46 @@ fn stage_remotion_video_asset(
         errors.push(err.to_string());
         return None;
     }
+    let stem = input
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("input");
+    let staged_name = format!("{}-{stem}.mp4", std::process::id());
+    let staged_path = asset_dir.join(&staged_name);
+
+    // Prefer a CFR transcode; fall back to a raw copy so a machine without
+    // ffmpeg can still render (at the cost of possible seek judder).
+    let transcode = std::process::Command::new("ffmpeg")
+        .args(remotion_stage_transcode_args(input, fps, &staged_path))
+        .output();
+    match transcode {
+        Ok(result) if result.status.success() && staged_path.exists() => {
+            return Some(format!("cloche-inputs/{staged_name}"));
+        }
+        Ok(result) => {
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            let tail: String = stderr
+                .lines()
+                .rev()
+                .take(3)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join(" | ");
+            warnings.push(format!(
+                "ffmpeg CFR normalization failed ({}); using the raw input, seeks may judder: {tail}",
+                result.status
+            ));
+        }
+        Err(err) => {
+            warnings.push(format!(
+                "ffmpeg not available for CFR normalization; using the raw input, seeks may judder: {err}"
+            ));
+        }
+    }
+    let _ = std::fs::remove_file(&staged_path);
+
     let file_name = input
         .file_name()
         .and_then(|name| name.to_str())
@@ -1068,6 +1149,20 @@ mod tests {
         assert_eq!(steps.into_inner(), vec!["clipboard", "text"]);
         assert!(!text.available);
         assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn remotion_stage_transcode_args_normalize_to_cfr() {
+        let args = remotion_stage_transcode_args(
+            Path::new("/tmp/raw.mp4"),
+            60,
+            Path::new("/tmp/staged.mp4"),
+        );
+        assert!(args.windows(2).any(|w| w == ["-i", "/tmp/raw.mp4"]));
+        assert!(args.windows(2).any(|w| w == ["-r", "60"]));
+        assert!(args.windows(2).any(|w| w == ["-fps_mode", "cfr"]));
+        assert!(args.windows(2).any(|w| w == ["-c:v", "libx264"]));
+        assert_eq!(args.last().map(String::as_str), Some("/tmp/staged.mp4"));
     }
 
     #[test]

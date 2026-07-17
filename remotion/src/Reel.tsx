@@ -1,12 +1,15 @@
 import React from 'react';
 import {
   AbsoluteFill,
+  Easing,
   OffthreadVideo,
   interpolate,
   staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
+import {ShaderGrainGradient} from './remocn/shader-grain-gradient';
+import {StaggeredWords} from './remocn/staggered-words';
 
 type CaptionCue = {
   startMs: number;
@@ -19,6 +22,9 @@ type ZoomCue = {
   startMs: number;
   endMs: number;
   scale?: number;
+  /** Optional focus point, 0..1 across the footage. Defaults to center. */
+  x?: number;
+  y?: number;
 };
 
 type CardCue = {
@@ -47,38 +53,152 @@ export const defaultReelProps: ReelProps = {
   inputVideo: '',
   title: 'Cloche Reel',
   durationMs: 6000,
-  fps: 30,
+  fps: 60,
   width: 1080,
   height: 1920,
   cues: {},
+};
+
+// Ease-out for entrances: arrive fast, settle gently.
+const EASE_ENTER = Easing.bezier(0.16, 1, 0.3, 1);
+// Ease-in for exits: leave with gravity.
+const EASE_EXIT = Easing.in(Easing.cubic);
+// Balanced in-out for camera moves so zooms breathe instead of lurching.
+const EASE_ZOOM = Easing.bezier(0.45, 0, 0.55, 1);
+
+/**
+ * 0..1 envelope over a [startMs, endMs] window: eased ramp in, hold, eased
+ * ramp out that lands exactly at endMs. Pure function of `nowMs`, so parallel
+ * render tabs always agree on a frame.
+ */
+const cueEnvelope = (
+  nowMs: number,
+  startMs: number,
+  endMs: number,
+  rampInMs: number,
+  rampOutMs: number,
+  easeIn: (t: number) => number,
+  easeOut: (t: number) => number,
+): number => {
+  const len = Math.max(1, endMs - startMs);
+  const rampIn = Math.min(rampInMs, len / 2);
+  const rampOut = Math.min(rampOutMs, len / 2);
+  const enter = interpolate(nowMs, [startMs, startMs + rampIn], [0, 1], {
+    easing: easeIn,
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+  const exit = interpolate(nowMs, [endMs - rampOut, endMs], [0, 1], {
+    easing: easeOut,
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+  return enter * (1 - exit);
+};
+
+type ZoomState = {
+  scale: number;
+  originX: number;
+  originY: number;
+};
+
+/** Blend all zoom cues into one smooth camera state for this instant. */
+const zoomStateAt = (nowMs: number, zooms: ZoomCue[] | undefined): ZoomState => {
+  let scale = 1;
+  let originX = 0.5;
+  let originY = 0.5;
+  let strongest = 0;
+  for (const cue of zooms ?? []) {
+    const target = cue.scale ?? 1;
+    if (target <= 1) {
+      continue;
+    }
+    const envelope = cueEnvelope(
+      nowMs,
+      cue.startMs,
+      cue.endMs,
+      450,
+      450,
+      EASE_ZOOM,
+      EASE_ZOOM,
+    );
+    const contribution = (target - 1) * envelope;
+    if (contribution > scale - 1) {
+      scale = 1 + contribution;
+    }
+    if (envelope > strongest) {
+      strongest = envelope;
+      originX = cue.x ?? 0.5;
+      originY = cue.y ?? 0.5;
+    }
+  }
+  return {scale, originX, originY};
 };
 
 export const ClocheReel: React.FC<ReelProps> = ({inputVideo, title, cues}) => {
   const frame = useCurrentFrame();
   const {fps, durationInFrames} = useVideoConfig();
   const nowMs = (frame / fps) * 1000;
-  const activeCaption = cues.captions?.find(
-    (caption) => nowMs >= caption.startMs && nowMs < caption.endMs,
-  );
-  const activeZoom = cues.zooms?.find((zoom) => nowMs >= zoom.startMs && nowMs < zoom.endMs);
+  const totalMs = (durationInFrames / fps) * 1000;
   const titleMs = cues.titleCard?.ms ?? 900;
   const outroMs = cues.outroCard?.ms ?? 0;
-  const remainingMs = ((durationInFrames - frame) / fps) * 1000;
-  const videoScale = activeZoom?.scale
-    ? interpolate(
-        nowMs,
-        [activeZoom.startMs, activeZoom.startMs + 300, activeZoom.endMs],
-        [1, activeZoom.scale, activeZoom.scale],
-        {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'},
-      )
-    : 1;
+
+  // Title and outro are scenes, not overlays: the title covers fully at frame
+  // 0 and releases into the footage; the outro takes over and HOLDS to the
+  // final frame. The footage stage fades and sinks while covered, so nothing
+  // ever ghosts over running footage.
+  const titleCover =
+    titleMs > 0
+      ? 1 -
+        interpolate(nowMs, [Math.max(0, titleMs - 400), titleMs], [0, 1], {
+          easing: EASE_ZOOM,
+          extrapolateLeft: 'clamp',
+          extrapolateRight: 'clamp',
+        })
+      : 0;
+  const outroStart = totalMs - outroMs;
+  const outroCover =
+    outroMs > 0
+      ? interpolate(nowMs, [outroStart, Math.min(totalMs, outroStart + 400)], [0, 1], {
+          easing: EASE_ZOOM,
+          extrapolateLeft: 'clamp',
+          extrapolateRight: 'clamp',
+        })
+      : 0;
+  const cover = Math.max(titleCover, outroCover);
+  // Fade through the brand background instead of crossfading: the footage is
+  // gone by cover 0.55, the card text only appears after cover 0.45, so text
+  // never sits over bright footage.
+  const stageVis = 1 - Math.min(1, cover * 1.8);
+  const textVis = Math.max(0, (cover - 0.45) / 0.55);
+
+  const zoom = zoomStateAt(nowMs, cues.zooms);
+  // Slow drift on the whole stage so held shots never feel frozen.
+  const drift = interpolate(nowMs, [0, totalMs], [1, 1.015], {
+    easing: EASE_ZOOM,
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+  const stageScale = drift * (1 - 0.06 * cover);
   const videoSource = inputVideo.startsWith('http') ? inputVideo : staticFile(inputVideo);
 
   return (
     <AbsoluteFill style={styles.canvas}>
-      <div style={styles.backdropA} />
-      <div style={styles.backdropB} />
-      <div style={styles.stage}>
+      <ShaderGrainGradient
+        colors={['#235f62', '#3d7f8a', '#f28b54']}
+        colorBack="#0d1a28"
+        softness={0.72}
+        intensity={0.16}
+        noise={0.06}
+        speed={0.55}
+      />
+      <div
+        style={{
+          ...styles.stage,
+          opacity: stageVis,
+          transform: `scale(${stageScale})`,
+        }}
+      >
         <div style={styles.chrome}>
           <div style={styles.toolbar}>
             <span style={{...styles.dot, backgroundColor: '#ff6b6b'}} />
@@ -93,7 +213,8 @@ export const ClocheReel: React.FC<ReelProps> = ({inputVideo, title, cues}) => {
                 muted
                 style={{
                   ...styles.video,
-                  transform: `scale(${videoScale})`,
+                  transform: `scale(${zoom.scale})`,
+                  transformOrigin: `${zoom.originX * 100}% ${zoom.originY * 100}%`,
                 }}
               />
             ) : (
@@ -102,34 +223,78 @@ export const ClocheReel: React.FC<ReelProps> = ({inputVideo, title, cues}) => {
           </div>
         </div>
       </div>
-      {activeCaption ? <Caption cue={activeCaption} /> : null}
-      {nowMs < titleMs ? (
-        <Card text={cues.titleCard?.text ?? title} progress={1 - nowMs / titleMs} />
+      {cues.captions?.map((cue, index) => (
+        <Caption key={index} cue={cue} nowMs={nowMs} />
+      ))}
+      {titleCover >= outroCover && textVis > 0.004 ? (
+        <CardScene
+          text={cues.titleCard?.text ?? title}
+          cover={textVis}
+          revealMs={nowMs}
+          exitLift={-26}
+        />
       ) : null}
-      {outroMs > 0 && remainingMs < outroMs ? (
-        <Card text={cues.outroCard?.text ?? title} progress={1 - remainingMs / outroMs} />
+      {outroCover > titleCover && textVis > 0.004 ? (
+        <CardScene
+          text={cues.outroCard?.text ?? title}
+          cover={textVis}
+          revealMs={nowMs - (outroStart + 180)}
+          exitLift={26}
+        />
       ) : null}
     </AbsoluteFill>
   );
 };
 
-const Caption: React.FC<{cue: CaptionCue}> = ({cue}) => {
+const Caption: React.FC<{cue: CaptionCue; nowMs: number}> = ({cue, nowMs}) => {
+  const envelope = cueEnvelope(
+    nowMs,
+    cue.startMs,
+    cue.endMs,
+    240,
+    200,
+    EASE_ENTER,
+    EASE_EXIT,
+  );
+  if (envelope <= 0.004) {
+    return null;
+  }
   const top = cue.position === 'top';
+  // Bottom captions rise into place; top captions drop in.
+  const offset = (1 - envelope) * (top ? -18 : 18);
   return (
-    <div style={{...styles.caption, ...(top ? styles.captionTop : styles.captionBottom)}}>
+    <div
+      style={{
+        ...styles.caption,
+        ...(top ? styles.captionTop : styles.captionBottom),
+        opacity: envelope,
+        transform: `translateY(${offset}px)`,
+      }}
+    >
       {cue.text}
     </div>
   );
 };
 
-const Card: React.FC<{text: string; progress: number}> = ({text, progress}) => {
-  const opacity = interpolate(progress, [0, 0.18, 0.82, 1], [0, 1, 1, 0], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  });
+/**
+ * Full-screen title/outro scene. The text sits directly on the brand canvas
+ * (the footage stage fades out underneath), so partial opacity during the
+ * transition reads as a scene change instead of ghost text over footage.
+ * Words rise in staggered from `revealMs`; the whole block lifts away with
+ * `exitLift` as the cover releases.
+ */
+const CardScene: React.FC<{
+  text: string;
+  cover: number;
+  revealMs: number;
+  exitLift: number;
+}> = ({text, cover, revealMs, exitLift}) => {
+  const lift = exitLift * (1 - cover);
   return (
-    <AbsoluteFill style={{...styles.card, opacity}}>
-      <div style={styles.cardText}>{text}</div>
+    <AbsoluteFill style={{...styles.card, opacity: cover}}>
+      <div style={{...styles.cardText, transform: `translateY(${lift}px)`}}>
+        <StaggeredWords text={text} localMs={revealMs} />
+      </div>
     </AbsoluteFill>
   );
 };
@@ -141,20 +306,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily:
       'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     overflow: 'hidden',
-  },
-  backdropA: {
-    position: 'absolute',
-    inset: '4% 14% 56% 8%',
-    background: 'linear-gradient(135deg, rgba(249, 202, 98, 0.5), rgba(64, 176, 166, 0.18))',
-    filter: 'blur(52px)',
-    transform: 'rotate(-12deg)',
-  },
-  backdropB: {
-    position: 'absolute',
-    inset: '48% 8% 7% 18%',
-    background: 'linear-gradient(135deg, rgba(69, 113, 178, 0.45), rgba(255, 255, 255, 0.16))',
-    filter: 'blur(58px)',
-    transform: 'rotate(9deg)',
   },
   stage: {
     position: 'absolute',
@@ -206,7 +357,6 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     height: '100%',
     objectFit: 'contain',
-    transformOrigin: 'center',
   },
   empty: {
     height: '100%',
@@ -239,17 +389,18 @@ const styles: Record<string, React.CSSProperties> = {
   },
   card: {
     alignItems: 'center',
-    background: 'rgba(6, 11, 16, 0.84)',
     display: 'flex',
     justifyContent: 'center',
     padding: 96,
   },
   cardText: {
-    maxWidth: 820,
+    maxWidth: 860,
     color: '#ffffff',
-    fontSize: 74,
+    fontSize: 84,
     fontWeight: 900,
-    lineHeight: 1.02,
+    lineHeight: 1.04,
+    letterSpacing: '-0.01em',
     textAlign: 'center',
+    textShadow: '0 10px 44px rgba(4, 10, 16, 0.6), 0 2px 10px rgba(4, 10, 16, 0.4)',
   },
 };

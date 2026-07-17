@@ -197,6 +197,81 @@ palette -> DESIGN.md bridge so a reel shares the still `shot-card` identity.
   valid h264 1080x1920 ~4s MP4; extracted frames confirm the title card,
   bottom caption, and aurora-teal palette render at their scheduled times.
 
+## Reels smoothness pass, Remotion engine (2026-07-11)
+
+Rendered reels were stuttery. Root causes and fixes, following the official
+remotion-dev/skills best practices (interpolate + Easing.bezier, ease-out
+enters, ease-in exits, everything a pure function of the frame):
+
+- **Zoom snap-out bug.** The old template found the active zoom cue and ramped
+  scale in over 300ms linearly; at `endMs` the cue stopped matching and scale
+  jumped back to 1 in a single frame. Replaced with `cueEnvelope()`: an eased
+  ramp in, hold, and eased ramp out that lands exactly at `endMs`. Envelopes
+  are `enter * (1 - exit)` so overlapping ramps stay continuous.
+- **Everything now animates.** Captions rise/drop in with an ease-out bezier
+  and leave with ease-in; title/outro cards fade, lift, and settle instead of
+  opacity-only pops. Zoom cues gained optional `x`/`y` focus points
+  (transform-origin), defaulting to center.
+- **60fps default.** Composition default (CLI `--fps` and `defaultReelProps`)
+  went 30 -> 60. Overlay motion animates at the composition rate, so 60 keeps
+  zooms/cards smooth even over 30fps footage. Footage frames just repeat.
+- **CFR staging transcode.** `stage_remotion_video_asset` now re-encodes the
+  input via ffmpeg to constant frame rate at the composition fps
+  (`-fps_mode cfr`, yuv420p, crf 16, faststart) instead of byte-copying.
+  Screen-recording timestamps are messy and make `<OffthreadVideo>` seeks
+  judder; Remotion's own docs recommend re-encoding for accurate seeking.
+  Falls back to the old copy with a warning when ffmpeg is missing, so the
+  no-ffmpeg path still renders.
+- **Crisper frames.** The render invocation passes `--jpeg-quality 95` and
+  `--crf 16`; Remotion's defaults (JPEG 80) read soft on text-heavy footage.
+- **TypeScript 7 breaks the Remotion bundler.** The template lockfile had
+  drifted to typescript 7.0.2 (the Go port), which no longer exposes `ts.sys`
+  through `require('typescript')`; `@remotion/bundler`'s esbuild-loader
+  crashes reading tsconfig. Pinned the template devDependency to exact 5.9.3.
+  If a future upgrade reintroduces TS 7, expect
+  `Cannot read properties of undefined (reading 'readFile')` at bundle time.
+- Verified end-to-end: synthetic 30fps testsrc clip -> `cloche reels render`
+  -> 6.0s 1080x1920 60fps MP4, zero warnings; extracted frames confirm title
+  card, captions, and focused zoom render at their scheduled times.
+
+## Reels title/outro became scenes, not overlays (2026-07-11)
+
+Follow-up to the smoothness pass after reviewing rendered frames: translucent
+black cards over running footage read as ghost text at every fade edge, and
+the outro faded OUT at the video's end, so reels ended on raw footage.
+Redesign in `Reel.tsx`:
+
+- Title/outro are scene covers. The title is fully on at frame 0 and releases
+  into the footage; the outro eases in and holds to the final frame (players
+  freeze on a clean branded card, not a half-dissolved overlay).
+- The footage stage fades and sinks (scale -6%) while covered; card text sits
+  directly on the brand gradient with a soft shadow. No black scrim layer.
+- Transitions fade through the background, staggered: footage is gone by
+  cover 0.55, text only appears after cover 0.45. Text and bright footage
+  never overlap, which was the single ugliest artifact.
+
+## Remocn components in the reel template (2026-07-11)
+
+Vendored two components from Remocn (github.com/Remocn/remocn, MIT,
+"production-ready animations, transitions, backgrounds, and scenes for
+Remotion") into `remotion/src/remocn/`:
+
+- `shader-grain-gradient.tsx`: animated grain-gradient background via
+  `@paper-design/shaders-react` (new template dependency; the Rust crate's
+  no-deps rule is untouched). The shader runs paused (`speed=0`) and is driven
+  from `useCurrentFrame`, so it stays a pure function of time across parallel
+  render tabs. Replaces the static CSS gradient + blurred divs in `Reel.tsx`.
+  Verified it renders in headless Chrome on this machine (default GL).
+- `staggered-words.tsx`: per-word staggered rise (adapted from remocn's
+  staggered-fade-up: transparent, driven by explicit local ms so scene covers
+  control the reveal). Used for title/outro text.
+
+Vendoring (the shadcn model remocn is built on) rather than importing from a
+package keeps the template self-contained and lets us strip their hardcoded
+white background and font tokens. If more remocn pieces are wanted later
+(fade-through, zoom-blur, simulated-cursor for future `reels record`
+integration), copy + adapt the same way and keep the MIT attribution header.
+
 ## Space-themed backdrops (2026-07-17)
 
 `src/space.rs` renders procedural deep-space scenes behind shot-cards:

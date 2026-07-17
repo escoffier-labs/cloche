@@ -74,10 +74,13 @@ The cue file follows the AppReels timeline shape:
 {
   "titleCard": { "text": "Create a project", "ms": 900 },
   "captions": [{ "startMs": 1000, "endMs": 2600, "text": "Open the project menu" }],
-  "zooms": [{ "startMs": 1200, "endMs": 2400, "scale": 1.08 }],
+  "zooms": [{ "startMs": 1200, "endMs": 2400, "scale": 1.35, "x": 0.3, "y": 0.4 }],
   "outroCard": { "text": "Done", "ms": 700 }
 }
 ```
+
+Zooms ease in and out on their own; `x`/`y` (0 to 1 across the footage,
+optional) pick the focus point, defaulting to center.
 
 Preview the latest capture:
 
