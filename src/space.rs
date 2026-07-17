@@ -40,11 +40,56 @@ pub fn render(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
     for &(x, y, radius) in &scene.knots {
         draw_knot(&mut canvas, x, y, radius);
     }
+    if let Some((x, y, radius)) = scene.ring_nebula {
+        draw_ring_nebula(&mut canvas, x, y, radius, scene.noise_seed);
+    }
     draw_stars(&mut canvas, &scene.stars);
     if let Some(sun) = &scene.sun {
         draw_sun(&mut canvas, sun);
     }
     canvas
+}
+
+/// Ring-Nebula-style planetary nebula: blue interior haze, teal-white middle
+/// shell, and a clumpy orange rim whose radius wobbles with noise so the
+/// donut reads organic instead of drafted.
+fn draw_ring_nebula(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32, seed: u64) {
+    let reach = (radius * 1.5).ceil() as i32;
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let raw = ((dx * dx + dy * dy) as f32).sqrt() / radius;
+            if raw > 1.45 {
+                continue;
+            }
+            let angle = (dy as f32).atan2(dx as f32);
+            // Wobble the shell radius around the ring.
+            let wobble = fbm(angle.cos() * 2.1 + 7.7, angle.sin() * 2.1 + 3.3, seed, 3) - 0.5;
+            let distance = raw * (1.0 + wobble * 0.18);
+            let px = x as i32 + dx;
+            let py = y as i32 + dy;
+            // Blue interior glow.
+            let interior = (1.0 - (distance / 0.72).powi(2)).clamp(0.0, 1.0);
+            add_light(canvas, px, py, [76.0, 128.0, 224.0], interior * 0.5);
+            // Teal-white middle shell.
+            let middle = (-((distance - 0.78) / 0.14).powi(2)).exp();
+            add_light(canvas, px, py, [168.0, 232.0, 222.0], middle * 0.55);
+            // Clumpy orange rim.
+            let rim = (-((distance - 1.0) / 0.13).powi(2)).exp();
+            let clump = fbm(
+                dx as f32 / radius * 4.0,
+                dy as f32 / radius * 4.0,
+                seed ^ 0xF00D,
+                3,
+            );
+            add_light(
+                canvas,
+                px,
+                py,
+                [255.0, 138.0, 58.0],
+                rim * (0.45 + 0.55 * clump) * 0.8,
+            );
+        }
+    }
 }
 
 /// Star-forming knot: a small saturated pink clump with a hot center, like
@@ -87,6 +132,8 @@ struct Scene {
     galaxies: Vec<Galaxy>,
     hero: Option<HeroGalaxy>,
     sun: Option<Sun>,
+    /// Ring-Nebula-style planetary nebula: (x, y, radius).
+    ring_nebula: Option<(f32, f32, f32)>,
 }
 
 struct Star {
@@ -134,24 +181,36 @@ struct HeroGalaxy {
 impl Scene {
     fn generate(rng: &mut StdRng, width: u32, height: u32) -> Self {
         let min_side = width.min(height) as f32;
-        // Ultra-deep-field seeds: almost no gas, black sky packed with dozens
-        // of tiny distant galaxies, like the Hubble Ultra Deep Field.
-        let deep_field = rng.random_range(0..8u32) == 0;
+        // Scene kinds: mostly nebula; sometimes an ultra-deep-field (black sky
+        // packed with tiny galaxies) or a bare open-cluster starfield.
+        let kind_roll = rng.random_range(0..10u32);
+        let deep_field = kind_roll == 0;
+        let cluster_field = kind_roll == 1;
         let mut stars = generate_stars(rng, width, height);
         let galaxies = if deep_field {
             generate_deep_field(rng, width, height, min_side)
         } else {
             generate_galaxies(rng, width, height)
         };
-        let sun = if deep_field {
+        let sun = if deep_field || cluster_field {
             None
         } else {
             generate_sun(rng, width, height)
         };
+        if cluster_field {
+            // Open-cluster field over black sky: one dense colorful cluster
+            // plus a doubled sprinkle of loose field stars, per the Hubble
+            // globular/open cluster portraits.
+            let (cx, cy) = corner_anchor(rng, width, height, 0.12);
+            let strength = rng.random_range(1.0..=1.6);
+            stars.extend(generate_cluster(rng, cx, cy, min_side, strength));
+            let extra = generate_stars(rng, width, height);
+            stars.extend(extra);
+        }
         // Bright ionization core, Orion/Westerlund style: a hot white-pink
         // heart in the nebula with a young star cluster embedded in it. Kept
         // near an edge so the capture window doesn't cover it.
-        let core = if !deep_field && rng.random_bool(0.65) {
+        let core = if !deep_field && !cluster_field && rng.random_bool(0.65) {
             let (cx, cy) = corner_anchor(rng, width, height, 0.08);
             Some((cx, cy, rng.random_range(0.5..=1.0)))
         } else {
@@ -162,7 +221,7 @@ impl Scene {
         }
         // Star-forming knots: small saturated pink clumps scattered through
         // the gas, like the Antennae's star-birth regions.
-        let knots = if deep_field {
+        let knots = if deep_field || cluster_field {
             Vec::new()
         } else {
             (0..rng.random_range(2..=6))
@@ -175,14 +234,14 @@ impl Scene {
                 })
                 .collect()
         };
-        let nebula_strength = if deep_field {
+        let nebula_strength = if deep_field || cluster_field {
             rng.random_range(0.05..=0.16)
         } else {
             rng.random_range(0.75..=1.0)
         };
         // Foreground hero spiral, corner-anchored so the window doesn't
         // swallow it.
-        let hero = if !deep_field && rng.random_bool(0.3) {
+        let hero = if !deep_field && !cluster_field && rng.random_bool(0.3) {
             let (hx, hy) = corner_anchor(rng, width, height, 0.1);
             Some(HeroGalaxy {
                 x: hx,
@@ -201,6 +260,15 @@ impl Scene {
         } else {
             None
         };
+        // Ring-Nebula-style planetary nebula: a small donut with a blue
+        // heart, teal-white middle, and wobbling orange rim.
+        let ring_nebula = if !deep_field && !cluster_field && hero.is_none() && rng.random_bool(0.2)
+        {
+            let (rx, ry) = corner_anchor(rng, width, height, 0.1);
+            Some((rx, ry, min_side * rng.random_range(0.06..=0.12)))
+        } else {
+            None
+        };
         Scene {
             noise_seed: rng.random(),
             nebula_offset: (rng.random_range(0.0..64.0), rng.random_range(0.0..64.0)),
@@ -215,6 +283,7 @@ impl Scene {
             galaxies,
             hero,
             sun,
+            ring_nebula,
         }
     }
 }
