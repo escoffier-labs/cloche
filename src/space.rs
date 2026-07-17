@@ -43,6 +43,9 @@ pub fn render(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
     if let Some((x, y, radius)) = scene.ring_nebula {
         draw_ring_nebula(&mut canvas, x, y, radius, scene.noise_seed);
     }
+    if let Some((x, y, radius, angle)) = scene.butterfly {
+        draw_butterfly(&mut canvas, x, y, radius, angle, scene.noise_seed);
+    }
     draw_stars(&mut canvas, &scene.stars);
     if let Some(sun) = &scene.sun {
         draw_sun(&mut canvas, sun);
@@ -92,6 +95,50 @@ fn draw_ring_nebula(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32, seed: u
     }
 }
 
+/// Twin-Jet-style bipolar nebula: two iridescent soap-bubble lobes either
+/// side of a hot central star, hue shimmering teal/blue/orange with noise.
+fn draw_butterfly(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32, angle: f32, seed: u64) {
+    let reach = (radius * 2.3).ceil() as i32;
+    let (sin, cos) = angle.sin_cos();
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            // Lobe coordinates: `along` the bipolar axis, `across` it.
+            let along = (dx as f32 * cos + dy as f32 * sin) / radius;
+            let across = (-(dx as f32) * sin + dy as f32 * cos) / radius;
+            let side = along.abs();
+            if side > 2.2 || across.abs() > 1.1 {
+                continue;
+            }
+            // Each lobe is a bubble centered ~0.9 radii out, pinched at the
+            // star and flaring outward.
+            let lobe = (-((side - 0.9) / 0.55).powi(2)).exp()
+                * (-(across / (0.28 + 0.38 * side.min(1.4))).powi(2)).exp();
+            if lobe < 0.02 {
+                continue;
+            }
+            let px = x as i32 + dx;
+            let py = y as i32 + dy;
+            // Iridescence: blend continuously teal -> blue -> warm rust so the
+            // sheen shifts like soap film instead of posterizing into patches.
+            let shimmer = fbm(along * 2.6 + 9.1, across * 2.6 + 4.4, seed ^ 0xB1F1, 3);
+            let cool = mix3(
+                [92.0, 218.0, 186.0],
+                [120.0, 158.0, 240.0],
+                smoothstep((shimmer - 0.3) / 0.3),
+            );
+            let tint = mix3(
+                cool,
+                [235.0, 150.0, 96.0],
+                smoothstep((shimmer - 0.62) / 0.25),
+            );
+            add_light(canvas, px, py, tint, lobe * 0.75);
+            // Hot white pinch near the star.
+            let pinch = (-(side / 0.35).powi(2)).exp() * (-(across / 0.3).powi(2)).exp();
+            add_light(canvas, px, py, [255.0, 248.0, 240.0], pinch * 0.7);
+        }
+    }
+}
+
 /// Star-forming knot: a small saturated pink clump with a hot center, like
 /// the star-birth regions strung along the Antennae galaxies.
 fn draw_knot(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32) {
@@ -134,6 +181,8 @@ struct Scene {
     sun: Option<Sun>,
     /// Ring-Nebula-style planetary nebula: (x, y, radius).
     ring_nebula: Option<(f32, f32, f32)>,
+    /// Twin-Jet-style bipolar nebula: (x, y, radius, axis angle).
+    butterfly: Option<(f32, f32, f32, f32)>,
     /// Veil-remnant ribbon: (axis angle, fractional offset from center).
     veil: Option<(f32, f32)>,
 }
@@ -264,15 +313,32 @@ impl Scene {
         } else {
             None
         };
-        // Ring-Nebula-style planetary nebula: a small donut with a blue
-        // heart, teal-white middle, and wobbling orange rim.
-        let ring_nebula =
-            if !deep_field && !cluster_field && !veil && hero.is_none() && rng.random_bool(0.2) {
-                let (rx, ry) = corner_anchor(rng, width, height, 0.1);
-                Some((rx, ry, min_side * rng.random_range(0.06..=0.12)))
+        // Planetary nebula slot: either an M57 donut (blue heart, teal-white
+        // middle, wobbling orange rim) or a Twin-Jet bipolar butterfly.
+        let mut ring_nebula = None;
+        let mut butterfly = None;
+        if !deep_field && !cluster_field && !veil && hero.is_none() && rng.random_bool(0.2) {
+            let (rx, ry) = corner_anchor(rng, width, height, 0.1);
+            if rng.random_bool(0.5) {
+                ring_nebula = Some((rx, ry, min_side * rng.random_range(0.06..=0.12)));
             } else {
-                None
-            };
+                butterfly = Some((
+                    rx,
+                    ry,
+                    min_side * rng.random_range(0.1..=0.17),
+                    rng.random_range(0.0..std::f32::consts::PI),
+                ));
+                // The hot central star that lights the lobes.
+                stars.push(Star {
+                    x: rx,
+                    y: ry,
+                    radius: 2.4,
+                    brightness: 1.0,
+                    color: [244.0, 250.0, 255.0],
+                    spike: 12.0,
+                });
+            }
+        }
         Scene {
             noise_seed: rng.random(),
             nebula_offset: (rng.random_range(0.0..64.0), rng.random_range(0.0..64.0)),
@@ -288,6 +354,7 @@ impl Scene {
             hero,
             sun,
             ring_nebula,
+            butterfly,
             veil: if veil {
                 Some((rng.random_range(0.3..=1.3), rng.random_range(-0.25..=0.25)))
             } else {
@@ -910,6 +977,34 @@ mod tests {
         sums.sort_unstable();
         let median = sums[sums.len() / 2];
         assert!(median < 240, "median brightness {median} is not a dark sky");
+    }
+
+    #[test]
+    fn every_scene_feature_is_reachable() {
+        // Guards against a probability or gating edit silently starving a
+        // scene kind out of the rotation.
+        let mut deep_fields = 0;
+        let mut heroes = 0;
+        let mut rings = 0;
+        let mut butterflies = 0;
+        let mut veils = 0;
+        let mut suns = 0;
+        for seed in 0..400u64 {
+            let mut rng = StdRng::seed_from_u64(seed ^ SCENE_SEED_SALT);
+            let scene = Scene::generate(&mut rng, 1600, 1200);
+            deep_fields += usize::from(scene.galaxies.len() >= 35 && scene.core.is_none());
+            heroes += usize::from(scene.hero.is_some());
+            rings += usize::from(scene.ring_nebula.is_some());
+            butterflies += usize::from(scene.butterfly.is_some());
+            veils += usize::from(scene.veil.is_some());
+            suns += usize::from(scene.sun.is_some());
+        }
+        assert!(deep_fields > 0, "no deep-field seeds in 0..400");
+        assert!(heroes > 0, "no hero-galaxy seeds in 0..400");
+        assert!(rings > 0, "no ring-nebula seeds in 0..400");
+        assert!(butterflies > 0, "no butterfly seeds in 0..400");
+        assert!(veils > 0, "no veil seeds in 0..400");
+        assert!(suns > 0, "no sun seeds in 0..400");
     }
 
     #[test]

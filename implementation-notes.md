@@ -258,3 +258,12 @@ body system (sphere/ring/crater rendering) and became nebula-first:
   spikes on most mid-bright stars, galaxy color variety (spiral/elliptical/
   lenticular), and a 1-in-8 ultra-deep-field seed: black sky with 35-70 tiny
   galaxies and almost no gas.
+
+## Scene-seed caveat (2026-07-17)
+
+Scene generation draws a canvas-area-dependent number of RNG values while
+placing field stars, so everything rolled after the starfield (cores, hero
+galaxies, planetary nebulae) depends on canvas dimensions as well as the
+seed. `--style-seed` reproduces a scene exactly only for the same input
+size. Fine for the actual contract (same input, same card), but seed lists
+computed at one canvas size do not transfer to another.
