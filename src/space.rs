@@ -134,6 +134,8 @@ struct Scene {
     sun: Option<Sun>,
     /// Ring-Nebula-style planetary nebula: (x, y, radius).
     ring_nebula: Option<(f32, f32, f32)>,
+    /// Veil-remnant ribbon: (axis angle, fractional offset from center).
+    veil: Option<(f32, f32)>,
 }
 
 struct Star {
@@ -186,13 +188,15 @@ impl Scene {
         let kind_roll = rng.random_range(0..10u32);
         let deep_field = kind_roll == 0;
         let cluster_field = kind_roll == 1;
+        // Veil-style supernova remnant: braided rainbow filaments over black.
+        let veil = kind_roll == 2;
         let mut stars = generate_stars(rng, width, height);
         let galaxies = if deep_field {
             generate_deep_field(rng, width, height, min_side)
         } else {
             generate_galaxies(rng, width, height)
         };
-        let sun = if deep_field || cluster_field {
+        let sun = if deep_field || cluster_field || veil {
             None
         } else {
             generate_sun(rng, width, height)
@@ -210,7 +214,7 @@ impl Scene {
         // Bright ionization core, Orion/Westerlund style: a hot white-pink
         // heart in the nebula with a young star cluster embedded in it. Kept
         // near an edge so the capture window doesn't cover it.
-        let core = if !deep_field && !cluster_field && rng.random_bool(0.65) {
+        let core = if !deep_field && !cluster_field && !veil && rng.random_bool(0.65) {
             let (cx, cy) = corner_anchor(rng, width, height, 0.08);
             Some((cx, cy, rng.random_range(0.5..=1.0)))
         } else {
@@ -221,7 +225,7 @@ impl Scene {
         }
         // Star-forming knots: small saturated pink clumps scattered through
         // the gas, like the Antennae's star-birth regions.
-        let knots = if deep_field || cluster_field {
+        let knots = if deep_field || cluster_field || veil {
             Vec::new()
         } else {
             (0..rng.random_range(2..=6))
@@ -234,14 +238,14 @@ impl Scene {
                 })
                 .collect()
         };
-        let nebula_strength = if deep_field || cluster_field {
+        let nebula_strength = if deep_field || cluster_field || veil {
             rng.random_range(0.05..=0.16)
         } else {
             rng.random_range(0.75..=1.0)
         };
         // Foreground hero spiral, corner-anchored so the window doesn't
         // swallow it.
-        let hero = if !deep_field && !cluster_field && rng.random_bool(0.3) {
+        let hero = if !deep_field && !cluster_field && !veil && rng.random_bool(0.3) {
             let (hx, hy) = corner_anchor(rng, width, height, 0.1);
             Some(HeroGalaxy {
                 x: hx,
@@ -262,13 +266,13 @@ impl Scene {
         };
         // Ring-Nebula-style planetary nebula: a small donut with a blue
         // heart, teal-white middle, and wobbling orange rim.
-        let ring_nebula = if !deep_field && !cluster_field && hero.is_none() && rng.random_bool(0.2)
-        {
-            let (rx, ry) = corner_anchor(rng, width, height, 0.1);
-            Some((rx, ry, min_side * rng.random_range(0.06..=0.12)))
-        } else {
-            None
-        };
+        let ring_nebula =
+            if !deep_field && !cluster_field && !veil && hero.is_none() && rng.random_bool(0.2) {
+                let (rx, ry) = corner_anchor(rng, width, height, 0.1);
+                Some((rx, ry, min_side * rng.random_range(0.06..=0.12)))
+            } else {
+                None
+            };
         Scene {
             noise_seed: rng.random(),
             nebula_offset: (rng.random_range(0.0..64.0), rng.random_range(0.0..64.0)),
@@ -284,6 +288,11 @@ impl Scene {
             hero,
             sun,
             ring_nebula,
+            veil: if veil {
+                Some((rng.random_range(0.3..=1.3), rng.random_range(-0.25..=0.25)))
+            } else {
+                None
+            },
         }
     }
 }
@@ -567,6 +576,35 @@ fn base_layer(width: u32, height: u32, style: &PresentationStyle, scene: &Scene)
                     [212.0, 176.0, 128.0],
                     ring.powi(4) * falloff * 0.22 * strength,
                 );
+            }
+        }
+
+        // Veil-remnant ribbon: three braided ridge-noise strands in electric
+        // blue, pink, and gold, confined to a soft diagonal band.
+        if let Some((veil_angle, veil_offset)) = scene.veil {
+            let (band_sin, band_cos) = veil_angle.sin_cos();
+            let across = (fx - 0.5) * -band_sin + (fy - 0.5 - veil_offset) * band_cos;
+            let envelope = (-(across / 0.22).powi(2)).exp();
+            if envelope > 0.02 {
+                let strand_colors: [[f32; 3]; 3] = [
+                    [96.0, 140.0, 255.0],
+                    [255.0, 110.0, 180.0],
+                    [235.0, 190.0, 90.0],
+                ];
+                for (strand, tint) in strand_colors.iter().enumerate() {
+                    let braid = fbm(
+                        nx * 2.2 + strand as f32 * 13.7,
+                        ny * 2.2 + strand as f32 * 5.9,
+                        scene.noise_seed ^ (0xBEEF + strand as u64),
+                        4,
+                    );
+                    let filament = (1.0 - (braid * 2.0 - 1.0).abs()).powi(8) * envelope;
+                    color = [
+                        (color[0] + tint[0] * filament * 0.9).min(255.0),
+                        (color[1] + tint[1] * filament * 0.9).min(255.0),
+                        (color[2] + tint[2] * filament * 0.9).min(255.0),
+                    ];
+                }
             }
         }
 
