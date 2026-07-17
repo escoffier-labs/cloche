@@ -196,3 +196,77 @@ palette -> DESIGN.md bridge so a reel shares the still `shot-card` identity.
 - **Verified end-to-end:** `cloche reels render --engine hyperframes` produced a
   valid h264 1080x1920 ~4s MP4; extracted frames confirm the title card,
   bottom caption, and aurora-teal palette render at their scheduled times.
+
+## Space-themed backdrops (2026-07-17)
+
+`src/space.rs` renders procedural deep-space scenes behind shot-cards:
+fbm value-noise nebula in the palette's two glow tints, thresholded so most
+of the frame stays black sky (real astro frames carry color on a fraction of
+the field), a dust-lane darkening pass, three star layers (dense faint, mid,
+a few spiked hero stars, warm-dominated color mix), and 0-2 corner-anchored
+bodies per seed (shaded planet with optional rings, cratered moon, galaxy
+smudge, edge sun). Bodies anchor to corners because the capture window covers
+the canvas center; only the padding band shows.
+
+Tradeoffs made:
+
+- The palette table went from tuples to a struct with a `BackdropKind`; the
+  8 space palettes are color-sampled from astrophotography of the named
+  objects (Orion, Carina, Pleiades, Rho Ophiuchi, Milky Way core, Andromeda,
+  Horsehead/Flame, Lagoon/Trifid).
+- Random rotation (`style_from_seed`) now picks space palettes only, per
+  owner preference; the 5 legacy gradients remain reachable via `--palette`.
+  Reels pinned to a gradient name keep working.
+- Scene randomness derives from `style.seed` xor a salt, so `--style-seed`
+  reproduces the exact scene and the same-seed determinism test still holds.
+- `PresentationStyleInfo` (JSON contract) is untouched: the palette name
+  already identifies the backdrop kind, so no schema change.
+- Everything is hand-rolled on `image` + `rand` (no new dependencies).
+
+## Planet/moon refinement from measured Hubble data (2026-07-17)
+
+A brigade run scraped 30 ESA Hubble Top 100 images and median-cut quantized
+the actual pixels (artifacts in untracked `run_artifacts/`). Changes grounded
+in the measurements:
+
+- Planet disc/band colors are now the measured warm cream/tan/gold pairs from
+  the Jupiter and Saturn portraits (plus one Neptune-blue for variety),
+  replacing palette-glow tinting that made planets look dyed.
+- Limb darkening strengthened to ~3x (measured limb vs disc-center ratio);
+  the blue atmosphere rim was replaced with a faint whitened echo of the body
+  color (measured limbs darken and desaturate, they do not glow blue).
+- Terminator uses a smoothstep S-curve (matches measured scanline falloff).
+- Gas-giant bands are 3D-projected latitude with an axis tilt so they curve
+  near the limb; rings gained a cylindrical globe shadow on the night side.
+- Craters are directional relief (sun-facing wall shadowed, far rim
+  highlighted) instead of flat dark dots; moons got maria mottling and
+  surface roughness noise so they stop reading as smooth clay balls.
+
+## Nebula-first rewrite, planets removed (2026-07-17)
+
+Owner verdict: procedural planets/moons never looked good and the Hubble
+reference frames are all about the gas. `src/space.rs` dropped the entire
+body system (sphere/ring/crater rendering) and became nebula-first:
+
+- Domain-warped fbm (a noise field offsets the sample point of another)
+  turns soft blobs into curled filaments; three decorrelated cloud systems
+  carry glow_a, glow_b, and stops[2] so one frame holds multiple hues.
+- The base sky stays near-black; brightness lives inside the gas. A
+  presence-based void multiplier pulls no-cloud regions toward black.
+- Key transfer-curve lesson: fbm output effectively spans ~0.3-0.7, so the
+  wisp() shaping must remap that band to 0..1 before powf, or cloud cores
+  never saturate and every frame reads as grey haze regardless of palette.
+- New features per Hubble refs: ridge ionization fronts (thin whitened
+  crests), pink star-forming knots, star clusters at the ionization core,
+  spikes on most mid-bright stars, galaxy color variety (spiral/elliptical/
+  lenticular), and a 1-in-8 ultra-deep-field seed: black sky with 35-70 tiny
+  galaxies and almost no gas.
+
+## Scene-seed caveat (2026-07-17)
+
+Scene generation draws a canvas-area-dependent number of RNG values while
+placing field stars, so everything rolled after the starfield (cores, hero
+galaxies, planetary nebulae) depends on canvas dimensions as well as the
+seed. `--style-seed` reproduces a scene exactly only for the same input
+size. Fine for the actual contract (same input, same card), but seed lists
+computed at one canvas size do not transfer to another.
