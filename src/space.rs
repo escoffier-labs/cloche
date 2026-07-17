@@ -31,6 +31,9 @@ pub fn render(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
     let mut rng = StdRng::seed_from_u64(style.seed ^ SCENE_SEED_SALT);
     let scene = Scene::generate(&mut rng, width, height);
     let mut canvas = base_layer(width, height, style, &scene);
+    if let Some(hero) = &scene.hero {
+        draw_hero_galaxy(&mut canvas, hero);
+    }
     for galaxy in &scene.galaxies {
         draw_galaxy(&mut canvas, galaxy);
     }
@@ -78,8 +81,11 @@ struct Scene {
     core: Option<(f32, f32, f32)>,
     /// Star-forming knots: (x, y, radius) pink clumps in the gas.
     knots: Vec<(f32, f32, f32)>,
+    /// Concentric dusty shells around the core, V838-style; ring spacing px.
+    shell_spacing: Option<f32>,
     stars: Vec<Star>,
     galaxies: Vec<Galaxy>,
+    hero: Option<HeroGalaxy>,
     sun: Option<Sun>,
 }
 
@@ -109,6 +115,20 @@ struct Sun {
     y: f32,
     radius: f32,
     color: [f32; 3],
+}
+
+/// A large foreground spiral, Whirlpool/M106 style: log-spiral blue arms laced
+/// with dust filaments, pink star-forming knots, and a warm core.
+struct HeroGalaxy {
+    x: f32,
+    y: f32,
+    radius: f32,
+    angle: f32,
+    /// Minor/major axis ratio (viewing tilt).
+    flatten: f32,
+    /// Log-spiral winding; sign flips the rotation sense.
+    twist: f32,
+    seed: u64,
 }
 
 impl Scene {
@@ -160,6 +180,27 @@ impl Scene {
         } else {
             rng.random_range(0.75..=1.0)
         };
+        // Foreground hero spiral, corner-anchored so the window doesn't
+        // swallow it.
+        let hero = if !deep_field && rng.random_bool(0.3) {
+            let (hx, hy) = corner_anchor(rng, width, height, 0.1);
+            Some(HeroGalaxy {
+                x: hx,
+                y: hy,
+                radius: min_side * rng.random_range(0.16..=0.3),
+                angle: rng.random_range(0.0..std::f32::consts::PI),
+                flatten: rng.random_range(0.3..=0.75),
+                twist: rng.random_range(1.8..=3.2) * if rng.random_bool(0.5) { 1.0 } else { -1.0 },
+                seed: rng.random(),
+            })
+        } else {
+            None
+        };
+        let shell_spacing = if core.is_some() && rng.random_bool(0.5) {
+            Some(min_side * rng.random_range(0.05..=0.1))
+        } else {
+            None
+        };
         Scene {
             noise_seed: rng.random(),
             nebula_offset: (rng.random_range(0.0..64.0), rng.random_range(0.0..64.0)),
@@ -169,8 +210,10 @@ impl Scene {
             dust_strength: rng.random_range(0.3..=0.7),
             core,
             knots,
+            shell_spacing,
             stars,
             galaxies,
+            hero,
             sun,
         }
     }
@@ -243,8 +286,9 @@ fn star_color(rng: &mut StdRng) -> [f32; 3] {
 /// Young star cluster embedded at the nebula core: dense gaussian sprinkle of
 /// hot blue-white and red points, like Westerlund 2 / the Trapezium.
 fn generate_cluster(rng: &mut StdRng, cx: f32, cy: f32, min_side: f32, strength: f32) -> Vec<Star> {
-    let spread = min_side * rng.random_range(0.08..=0.16);
-    let count = (strength * rng.random_range(40.0..=90.0)) as u32;
+    let spread = min_side * rng.random_range(0.09..=0.2);
+    // Tarantula/NGC 346 density: hundreds of members, brightest with spikes.
+    let count = (strength * rng.random_range(150.0..=300.0)) as u32;
     (0..count)
         .map(|_| {
             // Sum of two uniforms approximates a gaussian falloff cheaply.
@@ -256,13 +300,18 @@ fn generate_cluster(rng: &mut StdRng, cx: f32, cy: f32, min_side: f32, strength:
             } else {
                 [190.0, 210.0, 255.0] // hot blue-white
             };
+            let star_radius = rng.random_range(0.5..=1.6);
             Star {
                 x: cx + angle.cos() * radius,
                 y: cy + angle.sin() * radius,
-                radius: rng.random_range(0.6..=1.4),
-                brightness: rng.random_range(0.35..=0.9),
+                radius: star_radius,
+                brightness: rng.random_range(0.3..=1.0),
                 color,
-                spike: 0.0,
+                spike: if rng.random_bool(0.06) {
+                    star_radius * 3.0
+                } else {
+                    0.0
+                },
             }
         })
         .collect()
@@ -421,18 +470,35 @@ fn base_layer(width: u32, height: u32, style: &PresentationStyle, scene: &Scene)
             scene.noise_seed ^ 0x5A5A,
             4,
         );
-        let dim = 1.0 - dust.powi(3) * scene.dust_strength * (0.6 + 0.4 * cloud_a.max(cloud_b));
+        let presence_ab = cloud_a.max(cloud_b);
+        let mut dim = 1.0 - dust.powi(3) * scene.dust_strength * (0.6 + 0.4 * presence_ab);
+        // Hard silhouettes: only where dense dust crosses BRIGHT gas, carving
+        // Cone/Eagle-style black pillars. Gating on cloud presence keeps the
+        // empty sky from turning into marble.
+        let silhouette = ((dust - 0.72) / 0.1).clamp(0.0, 1.0) * presence_ab;
+        dim *= 1.0 - silhouette * 0.75;
         color = [color[0] * dim, color[1] * dim, color[2] * dim];
         // Hot white-pink glow around the ionization core, if this seed has one.
         if let Some((cx, cy, strength)) = scene.core {
-            let dx = (x as f32 - cx) / width.max(1) as f32;
-            let dy = (y as f32 - cy) / width.max(1) as f32;
-            let falloff = (1.0 - (dx * dx + dy * dy).sqrt() / 0.32).clamp(0.0, 1.0);
+            let dx = x as f32 - cx;
+            let dy = y as f32 - cy;
+            let pixel_distance = (dx * dx + dy * dy).sqrt();
+            let falloff = (1.0 - pixel_distance / (width.max(1) as f32 * 0.32)).clamp(0.0, 1.0);
             color = mix3(
                 color,
                 [255.0, 226.0, 224.0],
                 falloff.powi(2) * 0.65 * strength,
             );
+            // Concentric dusty shells thrown off the core, V838-style: golden
+            // rings that fade with distance and ripple through the gas.
+            if let Some(spacing) = scene.shell_spacing {
+                let ring = ((pixel_distance / spacing) * std::f32::consts::TAU).sin() * 0.5 + 0.5;
+                color = mix3(
+                    color,
+                    [212.0, 176.0, 128.0],
+                    ring.powi(4) * falloff * 0.22 * strength,
+                );
+            }
         }
 
         let grain = grain_noise(x, y, scene.noise_seed) * GRAIN_STRENGTH;
@@ -469,6 +535,56 @@ fn draw_stars(canvas: &mut RgbaImage, stars: &[Star]) {
                     add_light(canvas, px, py, star.color, amount);
                 }
             }
+        }
+    }
+}
+
+/// The big foreground spiral: pale disc glow, two log-spiral blue arms cut by
+/// dust filaments, single-pixel blue speckle and pink knots along the arms,
+/// and a warm bright core, per the Whirlpool/M106/M74 portraits.
+fn draw_hero_galaxy(canvas: &mut RgbaImage, hero: &HeroGalaxy) {
+    let reach = (hero.radius * 2.0).ceil() as i32;
+    let (sin, cos) = hero.angle.sin_cos();
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let major = dx as f32 * cos + dy as f32 * sin;
+            let minor = (-(dx as f32) * sin + dy as f32 * cos) / hero.flatten;
+            let distance = (major * major + minor * minor).sqrt() / hero.radius;
+            if distance > 1.8 {
+                continue;
+            }
+            let px = hero.x as i32 + dx;
+            let py = hero.y as i32 + dy;
+            // Two arms traced in log-spiral phase space.
+            let phase = minor.atan2(major) + hero.twist * distance.max(0.04).ln();
+            let arm = ((phase * 2.0).sin() * 0.5 + 0.5).powi(2);
+            let disc = (-(distance * 1.5).powi(2)).exp();
+            let core = (-(distance * 5.0).powi(2)).exp();
+            // Dust filaments riding the disc.
+            let filaments = fbm(
+                major / hero.radius * 3.2,
+                minor / hero.radius * 3.2,
+                hero.seed,
+                4,
+            );
+            let dust = ((filaments - 0.48) / 0.22).clamp(0.0, 1.0);
+            add_light(
+                canvas,
+                px,
+                py,
+                [225.0, 215.0, 205.0],
+                disc * 0.45 * (1.0 - dust * 0.8),
+            );
+            let arm_light = arm * disc * (1.0 - dust * 0.85);
+            add_light(canvas, px, py, [150.0, 175.0, 235.0], arm_light * 0.5);
+            // Per-pixel sparkle: blue cluster speckle and pink knots.
+            let sparkle = cell_hash(px as i64, py as i64, hero.seed);
+            if sparkle > 0.982 && arm_light > 0.06 {
+                add_light(canvas, px, py, [205.0, 222.0, 255.0], 0.75);
+            } else if sparkle < 0.005 && arm_light > 0.08 {
+                add_light(canvas, px, py, [255.0, 140.0, 190.0], 0.7);
+            }
+            add_light(canvas, px, py, [255.0, 226.0, 185.0], core * 0.95);
         }
     }
 }
