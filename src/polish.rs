@@ -22,38 +22,134 @@ const GRAIN_STRENGTH: f32 = 2.4;
 const REFERENCE_SIZE: f32 = 900.0;
 const SHADOW_DOWNSCALE: u32 = 4;
 
-type Palette = (&'static str, [[u8; 3]; 3], [u8; 3], [u8; 3]);
+/// How the backdrop behind the card is painted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackdropKind {
+    /// The original soft gradient with glows and light streaks.
+    Gradient,
+    /// Procedural deep-space scene: starfield, nebula dust, celestial bodies.
+    Space,
+}
 
-const PALETTES: [Palette; 5] = [
-    (
+struct Palette {
+    name: &'static str,
+    kind: BackdropKind,
+    stops: [[u8; 3]; 3],
+    glow_a: [u8; 3],
+    glow_b: [u8; 3],
+}
+
+const fn gradient(
+    name: &'static str,
+    stops: [[u8; 3]; 3],
+    glow_a: [u8; 3],
+    glow_b: [u8; 3],
+) -> Palette {
+    Palette {
+        name,
+        kind: BackdropKind::Gradient,
+        stops,
+        glow_a,
+        glow_b,
+    }
+}
+
+const fn space(
+    name: &'static str,
+    stops: [[u8; 3]; 3],
+    glow_a: [u8; 3],
+    glow_b: [u8; 3],
+) -> Palette {
+    Palette {
+        name,
+        kind: BackdropKind::Space,
+        stops,
+        glow_a,
+        glow_b,
+    }
+}
+
+/// Space palette colors are sampled from astrophotography of the named
+/// objects (emission pinks, reflection blues, dust golds); stops run
+/// dark-to-mid so `design.rs` still reads stop 0 as the canvas base.
+const PALETTES: [Palette; 13] = [
+    gradient(
         "violet-haze",
         [[49, 29, 130], [112, 52, 224], [44, 84, 228]],
         [235, 96, 190],
         [132, 196, 255],
     ),
-    (
+    gradient(
         "ember-glow",
         [[224, 158, 64], [214, 98, 40], [128, 46, 24]],
         [252, 214, 140],
         [170, 50, 30],
     ),
-    (
+    gradient(
         "aurora-teal",
         [[10, 72, 92], [18, 152, 128], [88, 206, 196]],
         [150, 235, 190],
         [36, 96, 176],
     ),
-    (
+    gradient(
         "rose-noir",
         [[40, 26, 50], [150, 38, 94], [236, 96, 122]],
         [250, 152, 100],
         [124, 72, 200],
     ),
-    (
+    gradient(
         "midnight-sky",
         [[14, 24, 58], [40, 78, 198], [92, 170, 248]],
         [142, 102, 248],
         [132, 228, 250],
+    ),
+    space(
+        "orion-emission",
+        [[8, 6, 18], [58, 22, 48], [128, 52, 84]],
+        [255, 140, 160],
+        [120, 200, 210],
+    ),
+    space(
+        "carina-hubble",
+        [[10, 10, 14], [40, 58, 52], [96, 120, 88]],
+        [230, 190, 110],
+        [90, 180, 190],
+    ),
+    space(
+        "pleiades-reflection",
+        [[6, 8, 20], [24, 40, 86], [70, 110, 180]],
+        [160, 200, 255],
+        [210, 230, 255],
+    ),
+    space(
+        "rho-ophiuchi",
+        [[14, 8, 10], [70, 50, 30], [130, 90, 120]],
+        [255, 190, 90],
+        [110, 150, 230],
+    ),
+    space(
+        "milkyway-core",
+        [[10, 8, 8], [50, 38, 28], [140, 110, 80]],
+        [255, 220, 170],
+        [255, 170, 120],
+    ),
+    space(
+        "andromeda-haze",
+        [[8, 8, 14], [40, 36, 50], [110, 100, 110]],
+        [255, 225, 180],
+        [130, 160, 220],
+    ),
+    space(
+        "horsehead-flame",
+        [[12, 6, 8], [60, 16, 28], [140, 40, 60]],
+        [235, 90, 110],
+        [255, 180, 110],
+    ),
+    space(
+        "lagoon-trifid",
+        [[10, 6, 14], [64, 24, 54], [150, 70, 110]],
+        [255, 150, 190],
+        [130, 170, 240],
     ),
 ];
 
@@ -61,6 +157,7 @@ const PALETTES: [Palette; 5] = [
 pub struct PresentationStyle {
     pub seed: u64,
     pub palette_name: String,
+    pub backdrop: BackdropKind,
     pub stops: [[u8; 3]; 3],
     pub glow_a: [u8; 3],
     pub glow_b: [u8; 3],
@@ -86,32 +183,40 @@ pub fn random_seed() -> u64 {
 
 /// All palette names accepted by `style_with_palette`, in table order.
 pub fn palette_names() -> Vec<&'static str> {
-    PALETTES.iter().map(|(name, _, _, _)| *name).collect()
+    PALETTES.iter().map(|palette| palette.name).collect()
 }
 
 /// Seeded style with the gradient palette pinned to `palette_name` instead of
 /// the seed's random pick. Returns `None` for an unknown palette name.
 pub fn style_with_palette(seed: u64, palette_name: &str) -> Option<PresentationStyle> {
-    let (name, stops, glow_a, glow_b) = PALETTES
+    let palette = PALETTES
         .iter()
-        .find(|(name, _, _, _)| *name == palette_name)?;
+        .find(|palette| palette.name == palette_name)?;
     let mut style = style_from_seed(seed);
-    style.palette_name = (*name).to_string();
-    style.stops = *stops;
-    style.glow_a = *glow_a;
-    style.glow_b = *glow_b;
+    style.palette_name = palette.name.to_string();
+    style.backdrop = palette.kind;
+    style.stops = palette.stops;
+    style.glow_a = palette.glow_a;
+    style.glow_b = palette.glow_b;
     Some(style)
 }
 
 pub fn style_from_seed(seed: u64) -> PresentationStyle {
     let mut rng = StdRng::seed_from_u64(seed);
-    let (name, stops, glow_a, glow_b) = PALETTES[rng.random_range(0..PALETTES.len())];
+    // Random rotation stays space-only; the legacy gradient palettes are
+    // reachable by explicit `--palette` name.
+    let space_palettes: Vec<&Palette> = PALETTES
+        .iter()
+        .filter(|palette| palette.kind == BackdropKind::Space)
+        .collect();
+    let palette = space_palettes[rng.random_range(0..space_palettes.len())];
     PresentationStyle {
         seed,
-        palette_name: name.to_string(),
-        stops,
-        glow_a,
-        glow_b,
+        palette_name: palette.name.to_string(),
+        backdrop: palette.kind,
+        stops: palette.stops,
+        glow_a: palette.glow_a,
+        glow_b: palette.glow_b,
         padding: rng.random_range(100..=132),
         corner_radius: rng.random_range(18..=26),
         shadow_blur: rng.random_range(22.0..=34.0),
@@ -322,6 +427,9 @@ fn soft_shadow_layer(
 }
 
 fn backdrop(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
+    if style.backdrop == BackdropKind::Space {
+        return crate::space::render(width, height, style);
+    }
     let stops = style.stops.map(to_f32);
     let glow_a = to_f32(style.glow_a);
     let glow_b = to_f32(style.glow_b);
@@ -508,13 +616,24 @@ mod tests {
     }
 
     #[test]
+    fn random_rotation_only_picks_space_palettes() {
+        for seed in 0..64 {
+            assert_eq!(
+                style_from_seed(seed).backdrop,
+                BackdropKind::Space,
+                "seed {seed} left the space rotation"
+            );
+        }
+    }
+
+    #[test]
     fn every_seed_palette_is_known() {
         for seed in 0..32 {
             let style = style_from_seed(seed);
             assert!(
                 PALETTES
                     .iter()
-                    .any(|(name, _, _, _)| *name == style.palette_name)
+                    .any(|palette| palette.name == style.palette_name)
             );
         }
     }
@@ -523,19 +642,19 @@ mod tests {
     fn palette_names_match_palette_table() {
         let names = palette_names();
         assert_eq!(names.len(), PALETTES.len());
-        for (name, _, _, _) in PALETTES {
-            assert!(names.contains(&name));
+        for palette in &PALETTES {
+            assert!(names.contains(&palette.name));
         }
     }
 
     #[test]
     fn style_with_palette_pins_the_named_palette() {
-        let (_, stops, glow_a, glow_b) = PALETTES[1];
+        let palette = &PALETTES[1];
         let style = style_with_palette(9, "ember-glow").expect("known palette");
         assert_eq!(style.palette_name, "ember-glow");
-        assert_eq!(style.stops, stops);
-        assert_eq!(style.glow_a, glow_a);
-        assert_eq!(style.glow_b, glow_b);
+        assert_eq!(style.stops, palette.stops);
+        assert_eq!(style.glow_a, palette.glow_a);
+        assert_eq!(style.glow_b, palette.glow_b);
         // Everything except the palette still derives from the seed.
         let base = style_from_seed(9);
         assert_eq!(style.padding, base.padding);

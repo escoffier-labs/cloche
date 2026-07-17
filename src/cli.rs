@@ -64,7 +64,7 @@ pub struct PolishArgs {
     /// Output card path; defaults to `<input>-card.png` next to the input.
     #[arg(long)]
     pub out: Option<PathBuf>,
-    /// Gradient palette; random when omitted.
+    /// Backdrop palette (gradient or deep-space scene); random when omitted.
     #[arg(long, value_parser = palette_name_parser())]
     pub palette: Option<String>,
     /// Seed for deterministic styling.

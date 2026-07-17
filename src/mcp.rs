@@ -134,7 +134,7 @@ fn tool_definitions() -> Value {
                 "properties": {
                     "input": { "type": "string", "description": "Path to the image to style (PNG, JPEG, or WebP)." },
                     "out": { "type": "string", "description": "Output card path; defaults to <input>-card.png next to the input." },
-                    "palette": { "type": "string", "enum": crate::polish::palette_names(), "description": "Gradient palette; random when omitted." },
+                    "palette": { "type": "string", "enum": crate::polish::palette_names(), "description": "Backdrop palette (gradient or deep-space scene); random when omitted." },
                     "styleSeed": { "type": "integer", "description": "Seed for deterministic styling." }
                 },
                 "required": ["input"]
