@@ -1,7 +1,9 @@
 //! Procedural deep-space backdrops for shot-cards, nebula-first: domain-warped
 //! fbm gas with ridge highlights and dust lanes, layered spiked starfields,
 //! ionization cores with embedded star clusters, star-forming knots, galaxy
-//! smudges, occasional suns, and rare ultra-deep-field seeds. Everything
+//! smudges, occasional suns, and rare ultra-deep-field seeds. Roughly half of
+//! seeds take the JWST look: 6-point snowflake diffraction spikes, clumpy
+//! globular dust, and an inverted red-arm/blue-core hero galaxy. Everything
 //! derives from the style seed so `--style-seed` reproduces the exact scene,
 //! and the whole canvas is opaque like the gradient backdrop.
 //!
@@ -46,7 +48,7 @@ pub fn render(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
     if let Some((x, y, radius, angle)) = scene.butterfly {
         draw_butterfly(&mut canvas, x, y, radius, angle, scene.noise_seed);
     }
-    draw_stars(&mut canvas, &scene.stars);
+    draw_stars(&mut canvas, &scene.stars, scene.jwst);
     if let Some(sun) = &scene.sun {
         draw_sun(&mut canvas, sun);
     }
@@ -179,6 +181,10 @@ struct Scene {
     galaxies: Vec<Galaxy>,
     hero: Option<HeroGalaxy>,
     sun: Option<Sun>,
+    /// JWST look: bright stars get 6-point snowflake diffraction spikes
+    /// (hexagonal-mirror signature) instead of the 4-point Hubble cross, and
+    /// the hero galaxy gets an electric-blue core.
+    jwst: bool,
     /// Ring-Nebula-style planetary nebula: (x, y, radius).
     ring_nebula: Option<(f32, f32, f32)>,
     /// Twin-Jet-style bipolar nebula: (x, y, radius, axis angle).
@@ -226,6 +232,8 @@ struct HeroGalaxy {
     flatten: f32,
     /// Log-spiral winding; sign flips the rotation sense.
     twist: f32,
+    /// JWST mid-IR palette: red/orange dusty arms, electric blue-white core.
+    jwst: bool,
     seed: u64,
 }
 
@@ -239,6 +247,9 @@ impl Scene {
         let cluster_field = kind_roll == 1;
         // Veil-style supernova remnant: braided rainbow filaments over black.
         let veil = kind_roll == 2;
+        // JWST look: 6-point snowflake diffraction spikes, clumpy globular
+        // dust, and (for a hero spiral) an inverted red-arm/blue-core palette.
+        let jwst = rng.random_bool(0.45);
         let mut stars = generate_stars(rng, width, height);
         let galaxies = if deep_field {
             generate_deep_field(rng, width, height, min_side)
@@ -303,6 +314,7 @@ impl Scene {
                 angle: rng.random_range(0.0..std::f32::consts::PI),
                 flatten: rng.random_range(0.3..=0.75),
                 twist: rng.random_range(1.8..=3.2) * if rng.random_bool(0.5) { 1.0 } else { -1.0 },
+                jwst,
                 seed: rng.random(),
             })
         } else {
@@ -353,6 +365,7 @@ impl Scene {
             galaxies,
             hero,
             sun,
+            jwst,
             ring_nebula,
             butterfly,
             veil: if veil {
@@ -592,6 +605,21 @@ fn base_layer(width: u32, height: u32, style: &PresentationStyle, scene: &Scene)
             scene.noise_seed ^ 0xC3C3,
             NEBULA_OCTAVES,
         ));
+        // JWST dust reads as clumpy cauliflower globules, not smooth haze. A
+        // high-frequency lump field breaks the gas into puffs by modulating
+        // each cloud downward in the gaps between clumps.
+        let (cloud_a, cloud_b, cloud_c) = if scene.jwst {
+            let lump = smoothstep(fbm(
+                nx * 4.4 + 3.3,
+                ny * 4.4 + 8.8,
+                scene.noise_seed ^ 0xB011,
+                3,
+            ));
+            let factor = 0.32 + 0.68 * lump;
+            (cloud_a * factor, cloud_b * factor, cloud_c * factor)
+        } else {
+            (cloud_a, cloud_b, cloud_c)
+        };
         color = mix3(color, glow_a, cloud_a * 0.95 * scene.nebula_strength);
         color = mix3(color, glow_b, cloud_b * 0.8 * scene.nebula_strength);
         color = mix3(color, stops[2], cloud_c * 0.5 * scene.nebula_strength);
@@ -685,7 +713,20 @@ fn base_layer(width: u32, height: u32, style: &PresentationStyle, scene: &Scene)
     })
 }
 
-fn draw_stars(canvas: &mut RgbaImage, stars: &[Star]) {
+/// JWST's six primary diffraction spikes (hexagonal mirror), at 30 deg
+/// intervals starting from vertical, as unit vectors. The instrument also
+/// throws two fainter horizontal spikes off the secondary-mirror struts; those
+/// are drawn separately at reduced length.
+const JWST_SPIKE_DIRS: [(f32, f32); 6] = [
+    (0.0, 1.0),
+    (0.866_025_4, 0.5),
+    (0.866_025_4, -0.5),
+    (0.0, -1.0),
+    (-0.866_025_4, -0.5),
+    (-0.866_025_4, 0.5),
+];
+
+fn draw_stars(canvas: &mut RgbaImage, stars: &[Star], jwst: bool) {
     for star in stars {
         let reach = (star.radius * 3.0).max(star.spike).ceil() as i32;
         let cx = star.x;
@@ -694,16 +735,25 @@ fn draw_stars(canvas: &mut RgbaImage, stars: &[Star]) {
             for dx in -reach..=reach {
                 let px = cx as i32 + dx;
                 let py = cy as i32 + dy;
-                let distance = ((dx * dx + dy * dy) as f32).sqrt();
+                let fdx = dx as f32;
+                let fdy = dy as f32;
+                let distance = (fdx * fdx + fdy * fdy).sqrt();
                 // Gaussian-ish core.
                 let mut amount = (-((distance / star.radius).powi(2))).exp() * star.brightness;
-                // Diffraction spikes: thin horizontal and vertical rays.
                 if star.spike > 0.0 {
-                    let along = dx.abs().max(dy.abs()) as f32;
-                    if (dx == 0 || dy == 0) && along <= star.spike {
-                        amount =
-                            amount.max((1.0 - along / star.spike).powi(2) * star.brightness * 0.7);
-                    }
+                    let spike = if jwst {
+                        jwst_spike(fdx, fdy, star.spike, star.brightness)
+                    } else {
+                        // Classic Hubble 4-point cross: thin vertical and
+                        // horizontal rays.
+                        let along = dx.abs().max(dy.abs()) as f32;
+                        if (dx == 0 || dy == 0) && along <= star.spike {
+                            (1.0 - along / star.spike).powi(2) * star.brightness * 0.7
+                        } else {
+                            0.0
+                        }
+                    };
+                    amount = amount.max(spike);
                 }
                 if amount > 0.01 {
                     add_light(canvas, px, py, star.color, amount);
@@ -711,6 +761,31 @@ fn draw_stars(canvas: &mut RgbaImage, stars: &[Star]) {
             }
         }
     }
+}
+
+/// Brightness contribution of the JWST spike set at a pixel offset: six full
+/// primary rays plus two half-length horizontal struts, each a thin ray that
+/// fades along its length.
+fn jwst_spike(fdx: f32, fdy: f32, length: f32, brightness: f32) -> f32 {
+    let mut best = 0.0f32;
+    let ray = |ux: f32, uy: f32, len: f32, strength: f32| -> f32 {
+        let along = fdx * ux + fdy * uy;
+        if along < 0.0 || along > len {
+            return 0.0;
+        }
+        let perp = (fdx * -uy + fdy * ux).abs();
+        // A ray ~1.4px wide that tapers to a point at its tip.
+        let width = (1.0 - along / len).clamp(0.0, 1.0);
+        let profile = (1.0 - perp / (0.7 + 0.7 * width)).clamp(0.0, 1.0);
+        (1.0 - along / len).powi(2) * profile * brightness * strength
+    };
+    for (ux, uy) in JWST_SPIKE_DIRS {
+        best = best.max(ray(ux, uy, length, 0.72));
+    }
+    // Secondary-strut horizontal pair, shorter and fainter.
+    best = best.max(ray(1.0, 0.0, length * 0.55, 0.38));
+    best = best.max(ray(-1.0, 0.0, length * 0.55, 0.38));
+    best
 }
 
 /// The big foreground spiral: pale disc glow, two log-spiral blue arms cut by
@@ -742,23 +817,36 @@ fn draw_hero_galaxy(canvas: &mut RgbaImage, hero: &HeroGalaxy) {
                 4,
             );
             let dust = ((filaments - 0.48) / 0.22).clamp(0.0, 1.0);
-            add_light(
-                canvas,
-                px,
-                py,
-                [225.0, 215.0, 205.0],
-                disc * 0.45 * (1.0 - dust * 0.8),
-            );
+            // JWST mid-IR spirals invert the Hubble palette: warm red/orange
+            // PAH-dust arms around an electric blue-white old-star core.
+            let (disc_tint, arm_tint, core_tint, speckle_tint, knot_tint) = if hero.jwst {
+                (
+                    [180.0, 150.0, 150.0],
+                    [235.0, 96.0, 54.0],
+                    [180.0, 220.0, 255.0],
+                    [210.0, 232.0, 255.0],
+                    [255.0, 210.0, 120.0],
+                )
+            } else {
+                (
+                    [225.0, 215.0, 205.0],
+                    [150.0, 175.0, 235.0],
+                    [255.0, 226.0, 185.0],
+                    [205.0, 222.0, 255.0],
+                    [255.0, 140.0, 190.0],
+                )
+            };
+            add_light(canvas, px, py, disc_tint, disc * 0.45 * (1.0 - dust * 0.8));
             let arm_light = arm * disc * (1.0 - dust * 0.85);
-            add_light(canvas, px, py, [150.0, 175.0, 235.0], arm_light * 0.5);
-            // Per-pixel sparkle: blue cluster speckle and pink knots.
+            add_light(canvas, px, py, arm_tint, arm_light * 0.5);
+            // Per-pixel sparkle: cluster speckle and star-forming knots.
             let sparkle = cell_hash(px as i64, py as i64, hero.seed);
             if sparkle > 0.982 && arm_light > 0.06 {
-                add_light(canvas, px, py, [205.0, 222.0, 255.0], 0.75);
+                add_light(canvas, px, py, speckle_tint, 0.75);
             } else if sparkle < 0.005 && arm_light > 0.08 {
-                add_light(canvas, px, py, [255.0, 140.0, 190.0], 0.7);
+                add_light(canvas, px, py, knot_tint, 0.7);
             }
-            add_light(canvas, px, py, [255.0, 226.0, 185.0], core * 0.95);
+            add_light(canvas, px, py, core_tint, core * 0.95);
         }
     }
 }
@@ -989,6 +1077,8 @@ mod tests {
         let mut butterflies = 0;
         let mut veils = 0;
         let mut suns = 0;
+        let mut jwst = 0;
+        let mut jwst_heroes = 0;
         for seed in 0..400u64 {
             let mut rng = StdRng::seed_from_u64(seed ^ SCENE_SEED_SALT);
             let scene = Scene::generate(&mut rng, 1600, 1200);
@@ -998,6 +1088,8 @@ mod tests {
             butterflies += usize::from(scene.butterfly.is_some());
             veils += usize::from(scene.veil.is_some());
             suns += usize::from(scene.sun.is_some());
+            jwst += usize::from(scene.jwst);
+            jwst_heroes += usize::from(scene.hero.as_ref().is_some_and(|h| h.jwst));
         }
         assert!(deep_fields > 0, "no deep-field seeds in 0..400");
         assert!(heroes > 0, "no hero-galaxy seeds in 0..400");
@@ -1005,6 +1097,12 @@ mod tests {
         assert!(butterflies > 0, "no butterfly seeds in 0..400");
         assert!(veils > 0, "no veil seeds in 0..400");
         assert!(suns > 0, "no sun seeds in 0..400");
+        // Both spike styles must appear, and at least one JWST-palette hero.
+        assert!(
+            jwst > 0 && jwst < 400,
+            "JWST look never/always fires: {jwst}"
+        );
+        assert!(jwst_heroes > 0, "no JWST-palette hero galaxy in 0..400");
     }
 
     #[test]

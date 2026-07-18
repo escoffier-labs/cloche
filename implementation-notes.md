@@ -270,3 +270,22 @@ galaxies, planetary nebulae) depends on canvas dimensions as well as the
 seed. `--style-seed` reproduces a scene exactly only for the same input
 size. Fine for the actual contract (same input, same card), but seed lists
 computed at one canvas size do not transfer to another.
+
+## JWST look (2026-07-17)
+
+Roughly 45% of seeds now render a JWST variant (`scene.jwst`), driven by the
+last reference batch of James Webb frames:
+
+- 6-point snowflake diffraction spikes (`jwst_spike`): six primary rays at
+  30-degree spacing plus two fainter half-length horizontal struts, matching
+  the hexagonal-mirror + secondary-strut signature. Hubble scenes keep the
+  4-point cross. The whole frame commits to one instrument look.
+- Clumpy dust: a high-frequency lump field multiplies the cloud values down in
+  the gaps, breaking the smooth fbm haze into cauliflower globules like Webb's
+  elephant-trunk pillars.
+- Inverted hero-galaxy palette: JWST mid-IR spirals read as red/orange PAH-dust
+  arms around an electric blue-white old-star core, the reverse of the Hubble
+  warm-core/blue-arm scheme.
+
+The reachability test now also asserts both spike styles occur and at least one
+JWST-palette hero appears across 400 seeds.
