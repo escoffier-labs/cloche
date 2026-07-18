@@ -51,7 +51,7 @@ Reels should merge the useful Appreels work into Cloche without making video fee
 - Share presentation styling between Shots and Reels so both modes look like one product.
 - Preserve stable JSON contracts with `ok`, `warnings`, `errors`, paths, durations, and generated artifact metadata.
 - Keep X11/Linux as the first Reels backend because the current Appreels prototype already works there.
-- Treat Windows and macOS Reels as later backend work unless a user need forces them earlier.
+- Treat Windows Reels as later backend work unless a user need forces it earlier. macOS is not a target platform.
 
 ## Reels Integration Sequence
 
@@ -112,4 +112,3 @@ GIF export is intentionally later.
 
 - Wayland compositor-specific active-window support where safe and possible.
 - Additional presentation styles and user-configurable style presets.
-- macOS backend exploration after Linux and Windows are boring.
