@@ -32,9 +32,70 @@ const NEBULA_OCTAVES: u32 = 5;
 /// Grain matches the gradient backdrop's strength so film feel is consistent.
 const GRAIN_STRENGTH: f32 = 2.4;
 
+/// A specific scene look the caller can pin instead of the seed's random pick.
+/// The seed still drives every free parameter (placement, noise, palette
+/// details); this only forces which kind of scene appears.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SceneKind {
+    Nebula,
+    Jwst,
+    Hubble,
+    Galaxy,
+    Alma,
+    Ring,
+    Butterfly,
+    Sun,
+    Sdo,
+    Cluster,
+    DeepField,
+    Veil,
+    Remnant,
+    Cmb,
+}
+
+impl SceneKind {
+    /// All names accepted by [`SceneKind::from_name`], in menu order.
+    pub const NAMES: [&'static str; 14] = [
+        "nebula",
+        "jwst",
+        "hubble",
+        "galaxy",
+        "alma",
+        "ring",
+        "butterfly",
+        "sun",
+        "sdo",
+        "cluster",
+        "deep-field",
+        "veil",
+        "remnant",
+        "cmb",
+    ];
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "nebula" => Self::Nebula,
+            "jwst" => Self::Jwst,
+            "hubble" => Self::Hubble,
+            "galaxy" => Self::Galaxy,
+            "alma" => Self::Alma,
+            "ring" => Self::Ring,
+            "butterfly" => Self::Butterfly,
+            "sun" => Self::Sun,
+            "sdo" => Self::Sdo,
+            "cluster" => Self::Cluster,
+            "deep-field" => Self::DeepField,
+            "veil" => Self::Veil,
+            "remnant" => Self::Remnant,
+            "cmb" => Self::Cmb,
+            _ => return None,
+        })
+    }
+}
+
 pub fn render(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
     let mut rng = StdRng::seed_from_u64(style.seed ^ SCENE_SEED_SALT);
-    let scene = Scene::generate(&mut rng, width, height);
+    let scene = Scene::generate(&mut rng, width, height, style.scene);
     let mut canvas = base_layer(width, height, style, &scene);
     if let Some(hero) = &scene.hero {
         draw_hero_galaxy(&mut canvas, hero);
@@ -346,33 +407,64 @@ struct HeroGalaxy {
 }
 
 impl Scene {
-    fn generate(rng: &mut StdRng, width: u32, height: u32) -> Self {
+    fn generate(rng: &mut StdRng, width: u32, height: u32, want: Option<SceneKind>) -> Self {
         let min_side = width.min(height) as f32;
         // Planck easter egg: rare all-CMB frame, rolled before everything so
-        // it stays independent of the kind table.
-        let cmb = rng.random_range(0..24u32) == 0;
+        // it stays independent of the kind table. Draw unconditionally so an
+        // unpinned scene is byte-identical to the pre-pin behavior.
+        let cmb_roll = rng.random_range(0..24u32) == 0;
+        let cmb = match want {
+            Some(SceneKind::Cmb) => true,
+            Some(_) => false,
+            None => cmb_roll,
+        };
         // Scene kinds: mostly nebula; sometimes an ultra-deep-field (black sky
         // packed with tiny galaxies), a bare open-cluster starfield, a veil
         // ribbon, or a Chandra-style fragmented remnant shell.
         let kind_roll = rng.random_range(0..12u32);
-        let deep_field = kind_roll == 0;
-        let cluster_field = kind_roll == 1;
-        // Veil-style supernova remnant: braided rainbow filaments over black.
-        let veil = kind_roll == 2;
-        let remnant_kind = kind_roll == 3;
+        let force_kind = |k: SceneKind| want == Some(k);
+        let (deep_field, cluster_field, veil, remnant_kind) = if want.is_some() {
+            (
+                force_kind(SceneKind::DeepField),
+                force_kind(SceneKind::Cluster),
+                force_kind(SceneKind::Veil),
+                force_kind(SceneKind::Remnant),
+            )
+        } else {
+            (
+                kind_roll == 0,
+                kind_roll == 1,
+                kind_roll == 2,
+                kind_roll == 3,
+            )
+        };
         // JWST look: 6-point snowflake diffraction spikes, clumpy globular
         // dust, and (for a hero spiral) an inverted red-arm/blue-core palette.
-        let jwst = rng.random_bool(0.45);
+        let jwst_roll = rng.random_bool(0.45);
+        let jwst = match want {
+            Some(SceneKind::Jwst) => true,
+            Some(SceneKind::Hubble) => false,
+            _ => jwst_roll,
+        };
         let mut stars = generate_stars(rng, width, height);
         let galaxies = if deep_field {
             generate_deep_field(rng, width, height, min_side)
         } else {
             generate_galaxies(rng, width, height)
         };
-        let sun = if deep_field || cluster_field || veil || remnant_kind {
-            None
-        } else {
-            generate_sun(rng, width, height)
+        let sun = match want {
+            Some(SceneKind::Sun) => {
+                let mut s = make_sun(rng, width, height);
+                s.sdo = false; // classic glow
+                Some(s)
+            }
+            Some(SceneKind::Sdo) => {
+                let mut s = make_sun(rng, width, height);
+                s.sdo = true;
+                Some(s)
+            }
+            _ if deep_field || cluster_field || veil || remnant_kind => None,
+            _ => generate_sun(rng, width, height),
         };
         if cluster_field {
             // Open-cluster field over black sky: one dense colorful cluster
@@ -418,9 +510,19 @@ impl Scene {
             rng.random_range(0.75..=1.0)
         };
         // Foreground hero spiral, corner-anchored so the window doesn't
-        // swallow it.
-        let hero =
-            if !deep_field && !cluster_field && !veil && !remnant_kind && rng.random_bool(0.3) {
+        // swallow it. A `galaxy` pin forces it; `alma`/`ring`/`butterfly`
+        // suppress it so the focal slot below can fire instead. The roll stays
+        // behind the gate so an unpinned scene draws exactly as before.
+        let hero_gate = !deep_field && !cluster_field && !veil && !remnant_kind;
+        let hero = if !hero_gate {
+            None
+        } else {
+            let want_hero = match want {
+                Some(SceneKind::Galaxy) => true,
+                Some(SceneKind::Alma | SceneKind::Ring | SceneKind::Butterfly) => false,
+                _ => rng.random_bool(0.3),
+            };
+            if want_hero {
                 let (hx, hy) = corner_anchor(rng, width, height, 0.1);
                 Some(HeroGalaxy {
                     x: hx,
@@ -435,54 +537,72 @@ impl Scene {
                 })
             } else {
                 None
-            };
+            }
+        };
         let shell_spacing = if core.is_some() && rng.random_bool(0.5) {
             Some(min_side * rng.random_range(0.05..=0.1))
         } else {
             None
         };
         // Focal-object slot: an M57 donut, a Twin-Jet bipolar butterfly, or an
-        // ALMA-style protoplanetary disc.
+        // ALMA-style protoplanetary disc. `ring`/`butterfly`/`alma` pins force
+        // it to fire and pick that object.
         let mut ring_nebula = None;
         let mut butterfly = None;
         let mut alma = None;
-        if !deep_field
-            && !cluster_field
-            && !veil
-            && !remnant_kind
-            && hero.is_none()
-            && rng.random_bool(0.25)
-        {
-            let (rx, ry) = corner_anchor(rng, width, height, 0.1);
-            match rng.random_range(0..3u32) {
-                0 => {
-                    ring_nebula = Some((rx, ry, min_side * rng.random_range(0.06..=0.12)));
-                }
-                1 => {
-                    butterfly = Some((
-                        rx,
-                        ry,
-                        min_side * rng.random_range(0.1..=0.17),
-                        rng.random_range(0.0..std::f32::consts::PI),
-                    ));
-                    // The hot central star that lights the lobes.
-                    stars.push(Star {
-                        x: rx,
-                        y: ry,
-                        radius: 2.4,
-                        brightness: 1.0,
-                        color: [244.0, 250.0, 255.0],
-                        spike: 12.0,
-                    });
-                }
-                _ => {
-                    alma = Some((
-                        rx,
-                        ry,
-                        min_side * rng.random_range(0.08..=0.14),
-                        rng.random_range(0.0..std::f32::consts::PI),
-                        rng.random_range(0.3..=0.6),
-                    ));
+        let focal_gate = !deep_field && !cluster_field && !veil && !remnant_kind && hero.is_none();
+        if focal_gate {
+            let want_focal = matches!(
+                want,
+                Some(SceneKind::Ring | SceneKind::Butterfly | SceneKind::Alma)
+            );
+            let fires = match want {
+                Some(_) => want_focal,
+                None => rng.random_bool(0.25),
+            };
+            let choice = match want {
+                Some(SceneKind::Ring) => 0,
+                Some(SceneKind::Butterfly) => 1,
+                Some(SceneKind::Alma) => 2,
+                _ => u32::MAX, // rolled below only when unpinned
+            };
+            if fires {
+                let (rx, ry) = corner_anchor(rng, width, height, 0.1);
+                let choice = if choice == u32::MAX {
+                    rng.random_range(0..3u32)
+                } else {
+                    choice
+                };
+                match choice {
+                    0 => {
+                        ring_nebula = Some((rx, ry, min_side * rng.random_range(0.06..=0.12)));
+                    }
+                    1 => {
+                        butterfly = Some((
+                            rx,
+                            ry,
+                            min_side * rng.random_range(0.1..=0.17),
+                            rng.random_range(0.0..std::f32::consts::PI),
+                        ));
+                        // The hot central star that lights the lobes.
+                        stars.push(Star {
+                            x: rx,
+                            y: ry,
+                            radius: 2.4,
+                            brightness: 1.0,
+                            color: [244.0, 250.0, 255.0],
+                            spike: 12.0,
+                        });
+                    }
+                    _ => {
+                        alma = Some((
+                            rx,
+                            ry,
+                            min_side * rng.random_range(0.08..=0.14),
+                            rng.random_range(0.0..std::f32::consts::PI),
+                            rng.random_range(0.3..=0.6),
+                        ));
+                    }
                 }
             }
         }
@@ -692,8 +812,14 @@ fn generate_sun(rng: &mut StdRng, width: u32, height: u32) -> Option<Sun> {
     if rng.random_range(0..10) < 7 {
         return None;
     }
+    Some(make_sun(rng, width, height))
+}
+
+/// Always builds a sun. Used by the random path (behind the 70% None gate) and
+/// by the `sun`/`sdo` scene pins, which need one guaranteed.
+fn make_sun(rng: &mut StdRng, width: u32, height: u32) -> Sun {
     let (x, y) = corner_anchor(rng, width, height, 0.02);
-    Some(Sun {
+    Sun {
         x,
         y,
         radius: width.min(height) as f32 * rng.random_range(0.16..=0.28),
@@ -703,7 +829,7 @@ fn generate_sun(rng: &mut StdRng, width: u32, height: u32) -> Option<Sun> {
             [255.0, 176.0, 120.0] // red giant warmth
         },
         sdo: rng.random_bool(0.4),
-    })
+    }
 }
 
 /// A point near one of the four canvas corners (the visible padding band),
@@ -1360,7 +1486,7 @@ mod tests {
         let mut sdo_suns = 0;
         for seed in 0..400u64 {
             let mut rng = StdRng::seed_from_u64(seed ^ SCENE_SEED_SALT);
-            let scene = Scene::generate(&mut rng, 1600, 1200);
+            let scene = Scene::generate(&mut rng, 1600, 1200, None);
             deep_fields += usize::from(scene.galaxies.len() >= 35 && scene.core.is_none());
             heroes += usize::from(scene.hero.is_some());
             rings += usize::from(scene.ring_nebula.is_some());
@@ -1390,6 +1516,48 @@ mod tests {
         assert!(remnants > 0, "no Chandra-remnant seeds in 0..400");
         assert!(cmbs > 0, "no CMB seeds in 0..400");
         assert!(sdo_suns > 0, "no SDO-sun seeds in 0..400");
+    }
+
+    #[test]
+    fn pinned_scenes_force_their_look() {
+        // A pin must produce its scene for any seed, not just lucky ones.
+        for seed in [1u64, 7, 42, 99, 500] {
+            let mk = |kind| {
+                let mut rng = StdRng::seed_from_u64(seed ^ SCENE_SEED_SALT);
+                Scene::generate(&mut rng, 1600, 1200, Some(kind))
+            };
+            assert!(mk(SceneKind::Cmb).cmb, "cmb pin (seed {seed})");
+            assert!(
+                mk(SceneKind::Remnant).remnant.is_some(),
+                "remnant (seed {seed})"
+            );
+            assert!(mk(SceneKind::Alma).alma.is_some(), "alma (seed {seed})");
+            assert!(
+                mk(SceneKind::Ring).ring_nebula.is_some(),
+                "ring (seed {seed})"
+            );
+            assert!(
+                mk(SceneKind::Butterfly).butterfly.is_some(),
+                "butterfly (seed {seed})"
+            );
+            assert!(mk(SceneKind::Galaxy).hero.is_some(), "galaxy (seed {seed})");
+            assert!(mk(SceneKind::Jwst).jwst, "jwst (seed {seed})");
+            assert!(!mk(SceneKind::Hubble).jwst, "hubble (seed {seed})");
+            let sun = mk(SceneKind::Sdo).sun;
+            assert!(sun.is_some_and(|s| s.sdo), "sdo (seed {seed})");
+            assert!(mk(SceneKind::Sun).sun.is_some(), "sun (seed {seed})");
+            let deep = mk(SceneKind::DeepField);
+            assert!(deep.galaxies.len() >= 35, "deep-field (seed {seed})");
+            assert!(mk(SceneKind::Veil).veil.is_some(), "veil (seed {seed})");
+        }
+    }
+
+    #[test]
+    fn scene_names_round_trip() {
+        for name in SceneKind::NAMES {
+            assert!(SceneKind::from_name(name).is_some(), "{name} did not parse");
+        }
+        assert!(SceneKind::from_name("nope").is_none());
     }
 
     #[test]

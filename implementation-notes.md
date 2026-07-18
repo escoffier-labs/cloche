@@ -306,3 +306,18 @@ Four more instrument looks joined the pool alongside Hubble/JWST:
   temperature mottle with nothing else drawn.
 
 The reachability test asserts all four appear across 400 seeds.
+
+## Scene-pick flag (2026-07-18)
+
+`cloche polish --scene <name>` pins the space scene look instead of leaving it
+to the seed. Names: nebula, jwst, hubble, galaxy, alma, ring, butterfly, sun,
+sdo, cluster, deep-field, veil, remnant, cmb (also exposed on the MCP `polish`
+tool). `SceneKind` lives in `space.rs`; `PresentationStyle` carries an optional
+`scene` the CLI sets after building the style.
+
+Design note: `Scene::generate` honors the pin at each decision point, and the
+unpinned (`None`) path draws the RNG in exactly the original order so existing
+seeds render identically. Where a roll was previously behind a short-circuit
+gate (hero, focal object), the pinned override stays inside that gate so it
+never consumes an extra draw on the unpinned path. `--scene` on a gradient
+palette is a no-op warning, since gradients have no scene.

@@ -135,6 +135,7 @@ fn tool_definitions() -> Value {
                     "input": { "type": "string", "description": "Path to the image to style (PNG, JPEG, or WebP)." },
                     "out": { "type": "string", "description": "Output card path; defaults to <input>-card.png next to the input." },
                     "palette": { "type": "string", "enum": crate::polish::palette_names(), "description": "Backdrop palette (gradient or deep-space scene); random when omitted." },
+                    "scene": { "type": "string", "enum": crate::polish::scene_names(), "description": "Pin the deep-space scene look (jwst, alma, cmb, etc.); random when omitted. Only applies to space palettes." },
                     "styleSeed": { "type": "integer", "description": "Seed for deterministic styling." }
                 },
                 "required": ["input"]
@@ -225,6 +226,10 @@ pub fn tool_command_args(name: &str, arguments: &Value) -> Result<Vec<String>, S
             }
             if let Some(value) = string_arg(arguments, "palette") {
                 args.push("--palette".to_string());
+                args.push(value);
+            }
+            if let Some(value) = string_arg(arguments, "scene") {
+                args.push("--scene".to_string());
                 args.push(value);
             }
             if let Some(value) = arguments.get("styleSeed").and_then(Value::as_u64) {

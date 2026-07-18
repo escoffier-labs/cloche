@@ -57,6 +57,19 @@ Style an existing screenshot into a presentation card without recapturing:
 cloche polish /tmp/diff.png --palette violet-haze --format json
 ```
 
+Space palettes (`orion-emission`, `carina-hubble`, and the rest) render a
+procedural deep-space scene behind the card. Pin a specific look with
+`--scene` instead of letting the seed pick:
+
+```bash
+cloche polish /tmp/diff.png --scene jwst --style-seed 12345
+```
+
+Scenes: `nebula`, `jwst`, `hubble`, `galaxy`, `alma`, `ring`, `butterfly`,
+`sun`, `sdo`, `cluster`, `deep-field`, `veil`, `remnant`, `cmb`. `--scene`
+only applies to space palettes; the same `--style-seed` reproduces a pinned
+scene exactly.
+
 Render an existing short recording through the experimental Remotion reel engine:
 
 ```bash
