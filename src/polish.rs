@@ -171,10 +171,29 @@ pub struct PresentationStyle {
     pub streak_phase: f32,
     pub glow_a_pos: (f32, f32),
     pub glow_b_pos: (f32, f32),
+    /// Optional pinned space scene; `None` lets the seed pick at random.
+    pub scene: Option<crate::space::SceneKind>,
 }
 
 pub fn random_style() -> PresentationStyle {
     style_from_seed(random_seed())
+}
+
+/// All scene names accepted by `--scene` / [`scene_from_name`], in menu order.
+pub fn scene_names() -> Vec<&'static str> {
+    crate::space::SceneKind::NAMES.to_vec()
+}
+
+/// Parse a `--scene` value into a [`crate::space::SceneKind`].
+pub fn scene_from_name(name: &str) -> Option<crate::space::SceneKind> {
+    crate::space::SceneKind::from_name(name)
+}
+
+impl PresentationStyle {
+    /// Whether this style paints a procedural space scene (vs a gradient).
+    pub fn is_space(&self) -> bool {
+        self.backdrop == BackdropKind::Space
+    }
 }
 
 pub fn random_seed() -> u64 {
@@ -226,6 +245,7 @@ pub fn style_from_seed(seed: u64) -> PresentationStyle {
         streak_phase: rng.random_range(0.0..=std::f32::consts::TAU),
         glow_a_pos: (rng.random_range(0.55..=0.95), rng.random_range(0.0..=0.22)),
         glow_b_pos: (rng.random_range(0.05..=0.45), rng.random_range(0.72..=1.0)),
+        scene: None,
     }
 }
 

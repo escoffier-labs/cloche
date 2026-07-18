@@ -270,3 +270,69 @@ galaxies, planetary nebulae) depends on canvas dimensions as well as the
 seed. `--style-seed` reproduces a scene exactly only for the same input
 size. Fine for the actual contract (same input, same card), but seed lists
 computed at one canvas size do not transfer to another.
+
+## JWST look (2026-07-17)
+
+Roughly 45% of seeds now render a JWST variant (`scene.jwst`), driven by the
+last reference batch of James Webb frames:
+
+- 6-point snowflake diffraction spikes (`jwst_spike`): six primary rays at
+  30-degree spacing plus two fainter half-length horizontal struts, matching
+  the hexagonal-mirror + secondary-strut signature. Hubble scenes keep the
+  4-point cross. The whole frame commits to one instrument look.
+- Clumpy dust: a high-frequency lump field multiplies the cloud values down in
+  the gaps, breaking the smooth fbm haze into cauliflower globules like Webb's
+  elephant-trunk pillars.
+- Inverted hero-galaxy palette: JWST mid-IR spirals read as red/orange PAH-dust
+  arms around an electric blue-white old-star core, the reverse of the Hubble
+  warm-core/blue-arm scheme.
+
+The reachability test now also asserts both spike styles occur and at least one
+JWST-palette hero appears across 400 seeds.
+
+## Telescope cameo pass (2026-07-18)
+
+Four more instrument looks joined the pool alongside Hubble/JWST:
+
+- ALMA protoplanetary disc (HL Tau): tilted copper disc with dark concentric
+  gap rings and a hot core, in the focal-object slot with the ring nebula and
+  butterfly.
+- SDO extreme-UV sun: 40% of suns render as a hard-limbed granulated gold
+  disc with limb brightening, a short corona, and 2-4 coronal loop arcs,
+  instead of the smooth glow.
+- Chandra remnant (Cas A): new scene kind - a fragmented shell of teal/gold/
+  red shards with a faint blue synchrotron haze inside.
+- Planck CMB easter egg: ~1 in 24 seeds render the pure blue-to-orange
+  temperature mottle with nothing else drawn.
+
+The reachability test asserts all four appear across 400 seeds.
+
+## Scene-pick flag (2026-07-18)
+
+`cloche polish --scene <name>` pins the space scene look instead of leaving it
+to the seed. Names: nebula, jwst, hubble, galaxy, alma, ring, butterfly, sun,
+sdo, cluster, deep-field, veil, remnant, cmb (also exposed on the MCP `polish`
+tool). `SceneKind` lives in `space.rs`; `PresentationStyle` carries an optional
+`scene` the CLI sets after building the style.
+
+Design note: `Scene::generate` honors the pin at each decision point, and the
+unpinned (`None`) path draws the RNG in exactly the original order so existing
+seeds render identically. Where a roll was previously behind a short-circuit
+gate (hero, focal object), the pinned override stays inside that gate so it
+never consumes an extra draw on the unpinned path. `--scene` on a gradient
+palette is a no-op warning, since gradients have no scene.
+
+## Occlusion fix + edge-on galaxy + lensing (2026-07-18)
+
+- Focal occlusion: corner-anchored hero galaxies now hug the corner
+  (inset 0.1 -> 0.04) and the focal-object slot uses 0.06, so bright cores
+  land inside the visible padding band instead of behind the window. A hero
+  spiral also dims the surrounding nebula to 0.3x so it reads as a galaxy on a
+  dark field rather than competing with the gas.
+- Edge-on dust-lane galaxy (Sombrero/Needle): a fourth focal object - a
+  knife-edge sliver (flatten 0.14) with a warm bulge, split by a dark dust
+  lane along the major axis. Pin: `edge-on`.
+- Gravitational lensing: deep-field scenes gain (~40%, or forced) a warm
+  elliptical lens galaxy ringed by 3-5 thin blue arcs bowed at 1.6-2.6x its
+  radius. Pin: `lensing` (forces a deep field with the lens).
+- `SceneKind` grew to 16 names; the pinned-scene test covers both new looks.

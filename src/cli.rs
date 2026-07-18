@@ -67,6 +67,10 @@ pub struct PolishArgs {
     /// Backdrop palette (gradient or deep-space scene); random when omitted.
     #[arg(long, value_parser = palette_name_parser())]
     pub palette: Option<String>,
+    /// Pin the deep-space scene look (e.g. `jwst`, `alma`, `cmb`); random when
+    /// omitted. Only applies to space palettes.
+    #[arg(long, value_parser = scene_name_parser())]
+    pub scene: Option<String>,
     /// Seed for deterministic styling.
     #[arg(long)]
     pub style_seed: Option<u64>,
@@ -156,6 +160,10 @@ impl ReelRenderEngine {
 
 fn palette_name_parser() -> clap::builder::PossibleValuesParser {
     clap::builder::PossibleValuesParser::new(polish::palette_names())
+}
+
+fn scene_name_parser() -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new(polish::scene_names())
 }
 
 #[derive(Debug, Args)]
@@ -766,7 +774,23 @@ fn run_polish(args: PolishArgs) -> crate::contract::PolishResult {
             None => Ok(polish::style_from_seed(seed)),
         };
         match style {
-            Ok(style) => {
+            Ok(mut style) => {
+                // Scene name is pre-validated by clap; a miss here is a bug.
+                if let Some(name) = args.scene.as_deref() {
+                    match polish::scene_from_name(name) {
+                        Some(scene) => {
+                            if style.is_space() {
+                                style.scene = Some(scene);
+                            } else {
+                                warnings.push(format!(
+                                    "--scene {name} ignored: palette {} is not a space scene",
+                                    style.palette_name
+                                ));
+                            }
+                        }
+                        None => warnings.push(format!("unknown scene: {name}")),
+                    }
+                }
                 let parent_ready = card_path
                     .parent()
                     .filter(|parent| !parent.as_os_str().is_empty())
@@ -1095,6 +1119,7 @@ mod tests {
             input: input.clone(),
             out: None,
             palette: None,
+            scene: None,
             style_seed: Some(7),
             format: OutputFormat::Json,
         });
@@ -1123,6 +1148,7 @@ mod tests {
             input,
             out: Some(out.clone()),
             palette: Some("aurora-teal".to_string()),
+            scene: None,
             style_seed: Some(11),
             format: OutputFormat::Json,
         });
@@ -1144,6 +1170,7 @@ mod tests {
             input,
             out: Some(dir.join("card.jpg")),
             palette: None,
+            scene: None,
             style_seed: Some(3),
             format: OutputFormat::Json,
         });
@@ -1200,6 +1227,7 @@ mod tests {
             input,
             out: None,
             palette: None,
+            scene: None,
             style_seed: Some(13),
             format: OutputFormat::Json,
         });
@@ -1215,6 +1243,7 @@ mod tests {
             input: dir.join("does-not-exist.png"),
             out: None,
             palette: None,
+            scene: None,
             style_seed: Some(5),
             format: OutputFormat::Json,
         });

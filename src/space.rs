@@ -1,9 +1,14 @@
 //! Procedural deep-space backdrops for shot-cards, nebula-first: domain-warped
 //! fbm gas with ridge highlights and dust lanes, layered spiked starfields,
 //! ionization cores with embedded star clusters, star-forming knots, galaxy
-//! smudges, occasional suns, and rare ultra-deep-field seeds. Everything
-//! derives from the style seed so `--style-seed` reproduces the exact scene,
-//! and the whole canvas is opaque like the gradient backdrop.
+//! smudges, occasional suns, and rare ultra-deep-field seeds. Roughly half of
+//! seeds take the JWST look: 6-point snowflake diffraction spikes, clumpy
+//! globular dust, and an inverted red-arm/blue-core hero galaxy. Other
+//! instrument cameos: ALMA protoplanetary discs, SDO extreme-UV suns with
+//! coronal loops, Chandra-style fragmented remnant shells, and a rare
+//! all-CMB Planck frame. Everything derives from the style seed so
+//! `--style-seed` reproduces the exact scene, and the whole canvas is opaque
+//! like the gradient backdrop.
 //!
 //! All drawing is hand-rolled on `image` + `rand` (no new dependencies, per
 //! repo policy). Focal features anchor to corners and edges because the
@@ -27,9 +32,76 @@ const NEBULA_OCTAVES: u32 = 5;
 /// Grain matches the gradient backdrop's strength so film feel is consistent.
 const GRAIN_STRENGTH: f32 = 2.4;
 
+/// A specific scene look the caller can pin instead of the seed's random pick.
+/// The seed still drives every free parameter (placement, noise, palette
+/// details); this only forces which kind of scene appears.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SceneKind {
+    Nebula,
+    Jwst,
+    Hubble,
+    Galaxy,
+    Alma,
+    Ring,
+    Butterfly,
+    Sun,
+    Sdo,
+    EdgeOn,
+    Cluster,
+    DeepField,
+    Lensing,
+    Veil,
+    Remnant,
+    Cmb,
+}
+
+impl SceneKind {
+    /// All names accepted by [`SceneKind::from_name`], in menu order.
+    pub const NAMES: [&'static str; 16] = [
+        "nebula",
+        "jwst",
+        "hubble",
+        "galaxy",
+        "alma",
+        "ring",
+        "butterfly",
+        "edge-on",
+        "sun",
+        "sdo",
+        "cluster",
+        "deep-field",
+        "lensing",
+        "veil",
+        "remnant",
+        "cmb",
+    ];
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "nebula" => Self::Nebula,
+            "jwst" => Self::Jwst,
+            "hubble" => Self::Hubble,
+            "galaxy" => Self::Galaxy,
+            "alma" => Self::Alma,
+            "ring" => Self::Ring,
+            "butterfly" => Self::Butterfly,
+            "edge-on" => Self::EdgeOn,
+            "sun" => Self::Sun,
+            "sdo" => Self::Sdo,
+            "cluster" => Self::Cluster,
+            "deep-field" => Self::DeepField,
+            "lensing" => Self::Lensing,
+            "veil" => Self::Veil,
+            "remnant" => Self::Remnant,
+            "cmb" => Self::Cmb,
+            _ => return None,
+        })
+    }
+}
+
 pub fn render(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
     let mut rng = StdRng::seed_from_u64(style.seed ^ SCENE_SEED_SALT);
-    let scene = Scene::generate(&mut rng, width, height);
+    let scene = Scene::generate(&mut rng, width, height, style.scene);
     let mut canvas = base_layer(width, height, style, &scene);
     if let Some(hero) = &scene.hero {
         draw_hero_galaxy(&mut canvas, hero);
@@ -46,11 +118,113 @@ pub fn render(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
     if let Some((x, y, radius, angle)) = scene.butterfly {
         draw_butterfly(&mut canvas, x, y, radius, angle, scene.noise_seed);
     }
-    draw_stars(&mut canvas, &scene.stars);
+    if let Some((x, y, radius, angle, flatten)) = scene.alma {
+        draw_alma_disc(&mut canvas, x, y, radius, angle, flatten);
+    }
+    if let Some((x, y, radius)) = scene.remnant {
+        draw_remnant(&mut canvas, x, y, radius, scene.noise_seed);
+    }
+    if let Some((x, y, radius, angle)) = scene.edge_on {
+        draw_edge_on_galaxy(&mut canvas, x, y, radius, angle, scene.noise_seed);
+    }
+    if let Some((x, y, radius)) = scene.lensing {
+        draw_lensing(&mut canvas, x, y, radius, scene.noise_seed);
+    }
+    draw_stars(&mut canvas, &scene.stars, scene.jwst);
     if let Some(sun) = &scene.sun {
-        draw_sun(&mut canvas, sun);
+        draw_sun(&mut canvas, sun, scene.noise_seed);
     }
     canvas
+}
+
+/// ALMA protoplanetary disc, HL Tau style: a tilted copper-orange disc with
+/// dark concentric gap rings carved by forming planets, and a hot center.
+fn draw_alma_disc(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32, angle: f32, flatten: f32) {
+    let reach = (radius * 1.2).ceil() as i32;
+    let (sin, cos) = angle.sin_cos();
+    // Gap radii as fractions of the disc, per the HL Tau rings.
+    const GAPS: [f32; 4] = [0.3, 0.5, 0.72, 0.9];
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let major = dx as f32 * cos + dy as f32 * sin;
+            let minor = (-(dx as f32) * sin + dy as f32 * cos) / flatten;
+            let distance = (major * major + minor * minor).sqrt() / radius;
+            if distance > 1.1 {
+                continue;
+            }
+            let px = x as i32 + dx;
+            let py = y as i32 + dy;
+            // Copper disc, brighter and warmer toward the center.
+            let disc = (-(distance * 1.6).powi(2)).exp();
+            let tint = mix3(
+                [255.0, 208.0, 150.0],
+                [190.0, 84.0, 36.0],
+                smoothstep(distance),
+            );
+            // Dark gap rings.
+            let mut gaps = 1.0f32;
+            for gap in GAPS {
+                gaps *= 1.0 - 0.72 * (-((distance - gap) / 0.035).powi(2)).exp();
+            }
+            add_light(canvas, px, py, tint, disc * gaps * 0.85);
+            // Hot core.
+            let core = (-(distance * 7.0).powi(2)).exp();
+            add_light(canvas, px, py, [255.0, 240.0, 214.0], core * 0.9);
+        }
+    }
+}
+
+/// Chandra-style young supernova remnant: a rough shell of fragmented
+/// multicolor shards (teal, red, gold) with a faint blue synchrotron haze
+/// inside, like Cassiopeia A.
+fn draw_remnant(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32, seed: u64) {
+    let reach = (radius * 1.4).ceil() as i32;
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let fdx = dx as f32;
+            let fdy = dy as f32;
+            let distance = (fdx * fdx + fdy * fdy).sqrt() / radius;
+            if distance > 1.35 {
+                continue;
+            }
+            let px = x as i32 + dx;
+            let py = y as i32 + dy;
+            // Faint blue haze filling the shell interior.
+            if distance < 0.9 {
+                let haze = (1.0 - distance / 0.9) * 0.2;
+                add_light(canvas, px, py, [96.0, 140.0, 224.0], haze);
+            }
+            // The shell band, broken into shards by hard-thresholded noise.
+            let shell = (-((distance - 1.0) / 0.19).powi(2)).exp();
+            if shell < 0.03 {
+                continue;
+            }
+            let frag = fbm(
+                fdx / radius * 3.4 + 7.7,
+                fdy / radius * 3.4 + 2.2,
+                seed ^ 0xCA5A,
+                4,
+            );
+            let shard = ((frag - 0.42) / 0.2).clamp(0.0, 1.0);
+            if shard <= 0.0 {
+                continue;
+            }
+            // Shard color: teal -> gold -> red picked by a second field.
+            let hue = fbm(
+                fdx / radius * 2.0 + 31.0,
+                fdy / radius * 2.0 + 17.0,
+                seed ^ 0x0DDC,
+                3,
+            );
+            let warm = mix3(
+                [244.0, 196.0, 96.0],
+                [232.0, 84.0, 60.0],
+                smoothstep((hue - 0.55) / 0.25),
+            );
+            let tint = mix3([84.0, 212.0, 200.0], warm, smoothstep((hue - 0.3) / 0.3));
+            add_light(canvas, px, py, tint, shell * shard * 1.1);
+        }
+    }
 }
 
 /// Ring-Nebula-style planetary nebula: blue interior haze, teal-white middle
@@ -139,6 +313,104 @@ fn draw_butterfly(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32, angle: f3
     }
 }
 
+/// Edge-on dust-lane galaxy, Sombrero/Needle style: a knife-edge bright sliver
+/// with a warm central bulge, split lengthwise by a dark dust lane.
+fn draw_edge_on_galaxy(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32, angle: f32, seed: u64) {
+    // Very flattened disc: long and thin.
+    let flatten = 0.14;
+    let reach = (radius * 1.2).ceil() as i32;
+    let (sin, cos) = angle.sin_cos();
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let major = (dx as f32 * cos + dy as f32 * sin) / radius;
+            let minor = (-(dx as f32) * sin + dy as f32 * cos) / (radius * flatten);
+            let distance = (major * major + minor * minor).sqrt();
+            if distance > 1.2 {
+                continue;
+            }
+            let px = x as i32 + dx;
+            let py = y as i32 + dy;
+            // Disc glow, tapering along the length; slight noise mottling.
+            let mottle = 0.8 + 0.2 * fbm(major * 4.0 + 5.0, minor * 4.0 + 9.0, seed ^ 0xED9E, 3);
+            let disc = (-(distance * 1.4).powi(2)).exp() * mottle;
+            add_light(canvas, px, py, [214.0, 214.0, 226.0], disc * 0.8);
+            // Warm central bulge.
+            let bulge = (-(distance * 3.4).powi(2)).exp();
+            add_light(canvas, px, py, [255.0, 232.0, 196.0], bulge);
+            // Dark dust lane: a thin absorbing band along the major axis
+            // (minor ~ 0), strongest across the disc body.
+            let lane =
+                (-(minor / 0.32).powi(2)).exp() * (1.0 - (major.abs() / 1.0).powi(2)).max(0.0);
+            if lane > 0.02 {
+                darken(canvas, px, py, lane * 0.55);
+            }
+        }
+    }
+}
+
+/// Gravitational lens: a warm elliptical cluster galaxy with a few thin blue
+/// arcs of stretched background galaxies bowed around it, like the arcs in
+/// Webb's deep-field cluster shots.
+fn draw_lensing(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32, seed: u64) {
+    // The lens galaxy: a soft warm-white elliptical blob.
+    let reach = (radius * 2.4).ceil() as i32;
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let distance = ((dx * dx + dy * dy) as f32).sqrt() / radius;
+            if distance > 2.4 {
+                continue;
+            }
+            let glow = (-(distance * 1.4).powi(2)).exp();
+            add_light(
+                canvas,
+                x as i32 + dx,
+                y as i32 + dy,
+                [255.0, 236.0, 206.0],
+                glow * 0.9,
+            );
+        }
+    }
+    // Einstein-ring arcs: short blue segments on circles around the lens, each
+    // at its own radius, angular center, and span. Deterministic from seed.
+    let mut rng = StdRng::seed_from_u64(seed ^ 0x1E45);
+    for _ in 0..rng.random_range(3..=5) {
+        let arc_radius = radius * rng.random_range(1.6..=2.6);
+        let center = rng.random_range(0.0..std::f32::consts::TAU);
+        let span = rng.random_range(0.4..=0.9);
+        let reach = (arc_radius + 3.0).ceil() as i32;
+        for dy in -reach..=reach {
+            for dx in -reach..=reach {
+                let r = ((dx * dx + dy * dy) as f32).sqrt();
+                if (r - arc_radius).abs() > 1.6 {
+                    continue;
+                }
+                let theta = (dy as f32).atan2(dx as f32);
+                // Angular distance from the arc center, wrapped to [-pi, pi].
+                let mut d = theta - center;
+                while d > std::f32::consts::PI {
+                    d -= std::f32::consts::TAU;
+                }
+                while d < -std::f32::consts::PI {
+                    d += std::f32::consts::TAU;
+                }
+                if d.abs() > span {
+                    continue;
+                }
+                // Bright mid-arc fading to the ends and across the width.
+                let along = 1.0 - (d.abs() / span).powi(2);
+                let across = 1.0 - (r - arc_radius).abs() / 1.6;
+                add_light(
+                    canvas,
+                    x as i32 + dx,
+                    y as i32 + dy,
+                    [150.0, 196.0, 255.0],
+                    along * across * 0.7,
+                );
+            }
+        }
+    }
+}
+
 /// Star-forming knot: a small saturated pink clump with a hot center, like
 /// the star-birth regions strung along the Antennae galaxies.
 fn draw_knot(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32) {
@@ -179,12 +451,27 @@ struct Scene {
     galaxies: Vec<Galaxy>,
     hero: Option<HeroGalaxy>,
     sun: Option<Sun>,
+    /// JWST look: bright stars get 6-point snowflake diffraction spikes
+    /// (hexagonal-mirror signature) instead of the 4-point Hubble cross, and
+    /// the hero galaxy gets an electric-blue core.
+    jwst: bool,
     /// Ring-Nebula-style planetary nebula: (x, y, radius).
     ring_nebula: Option<(f32, f32, f32)>,
     /// Twin-Jet-style bipolar nebula: (x, y, radius, axis angle).
     butterfly: Option<(f32, f32, f32, f32)>,
     /// Veil-remnant ribbon: (axis angle, fractional offset from center).
     veil: Option<(f32, f32)>,
+    /// ALMA protoplanetary disc, HL Tau style: (x, y, radius, angle, flatten).
+    alma: Option<(f32, f32, f32, f32, f32)>,
+    /// Chandra-style young supernova remnant shell: (x, y, radius).
+    remnant: Option<(f32, f32, f32)>,
+    /// Edge-on dust-lane galaxy, Sombrero/Needle style: (x, y, radius, angle).
+    edge_on: Option<(f32, f32, f32, f32)>,
+    /// Gravitational lens: a cluster galaxy ringed by stretched arcs, in a
+    /// deep field. (x, y, radius).
+    lensing: Option<(f32, f32, f32)>,
+    /// Planck easter egg: the whole frame is CMB mottle, nothing else drawn.
+    cmb: bool,
 }
 
 struct Star {
@@ -213,6 +500,9 @@ struct Sun {
     y: f32,
     radius: f32,
     color: [f32; 3],
+    /// SDO extreme-UV look: textured granulation disc with coronal loops
+    /// instead of a smooth glow.
+    sdo: bool,
 }
 
 /// A large foreground spiral, Whirlpool/M106 style: log-spiral blue arms laced
@@ -226,29 +516,90 @@ struct HeroGalaxy {
     flatten: f32,
     /// Log-spiral winding; sign flips the rotation sense.
     twist: f32,
+    /// JWST mid-IR palette: red/orange dusty arms, electric blue-white core.
+    jwst: bool,
     seed: u64,
 }
 
 impl Scene {
-    fn generate(rng: &mut StdRng, width: u32, height: u32) -> Self {
+    fn generate(rng: &mut StdRng, width: u32, height: u32, want: Option<SceneKind>) -> Self {
         let min_side = width.min(height) as f32;
+        // Planck easter egg: rare all-CMB frame, rolled before everything so
+        // it stays independent of the kind table. Draw unconditionally so an
+        // unpinned scene is byte-identical to the pre-pin behavior.
+        let cmb_roll = rng.random_range(0..24u32) == 0;
+        let cmb = match want {
+            Some(SceneKind::Cmb) => true,
+            Some(_) => false,
+            None => cmb_roll,
+        };
         // Scene kinds: mostly nebula; sometimes an ultra-deep-field (black sky
-        // packed with tiny galaxies) or a bare open-cluster starfield.
-        let kind_roll = rng.random_range(0..10u32);
-        let deep_field = kind_roll == 0;
-        let cluster_field = kind_roll == 1;
-        // Veil-style supernova remnant: braided rainbow filaments over black.
-        let veil = kind_roll == 2;
+        // packed with tiny galaxies), a bare open-cluster starfield, a veil
+        // ribbon, or a Chandra-style fragmented remnant shell.
+        let kind_roll = rng.random_range(0..12u32);
+        let force_kind = |k: SceneKind| want == Some(k);
+        let (deep_field, cluster_field, veil, remnant_kind) = if want.is_some() {
+            (
+                // A lensing pin is a deep field with a lens cluster added.
+                force_kind(SceneKind::DeepField) || force_kind(SceneKind::Lensing),
+                force_kind(SceneKind::Cluster),
+                force_kind(SceneKind::Veil),
+                force_kind(SceneKind::Remnant),
+            )
+        } else {
+            (
+                kind_roll == 0,
+                kind_roll == 1,
+                kind_roll == 2,
+                kind_roll == 3,
+            )
+        };
+        // JWST look: 6-point snowflake diffraction spikes, clumpy globular
+        // dust, and (for a hero spiral) an inverted red-arm/blue-core palette.
+        let jwst_roll = rng.random_bool(0.45);
+        let jwst = match want {
+            Some(SceneKind::Jwst) => true,
+            Some(SceneKind::Hubble) => false,
+            _ => jwst_roll,
+        };
         let mut stars = generate_stars(rng, width, height);
         let galaxies = if deep_field {
             generate_deep_field(rng, width, height, min_side)
         } else {
             generate_galaxies(rng, width, height)
         };
-        let sun = if deep_field || cluster_field || veil {
-            None
+        // Gravitational lens: a bright cluster galaxy ringed by stretched arcs,
+        // in a deep field. Forced by the `lensing` pin, ~40% otherwise. The
+        // roll stays inside the deep-field branch so other scenes are
+        // unaffected.
+        let lensing = if deep_field {
+            let want_lens = match want {
+                Some(SceneKind::Lensing) => true,
+                Some(_) => false,
+                None => rng.random_bool(0.4),
+            };
+            if want_lens {
+                let (lx, ly) = corner_anchor(rng, width, height, 0.16);
+                Some((lx, ly, min_side * rng.random_range(0.05..=0.09)))
+            } else {
+                None
+            }
         } else {
-            generate_sun(rng, width, height)
+            None
+        };
+        let sun = match want {
+            Some(SceneKind::Sun) => {
+                let mut s = make_sun(rng, width, height);
+                s.sdo = false; // classic glow
+                Some(s)
+            }
+            Some(SceneKind::Sdo) => {
+                let mut s = make_sun(rng, width, height);
+                s.sdo = true;
+                Some(s)
+            }
+            _ if deep_field || cluster_field || veil || remnant_kind => None,
+            _ => generate_sun(rng, width, height),
         };
         if cluster_field {
             // Open-cluster field over black sky: one dense colorful cluster
@@ -263,18 +614,19 @@ impl Scene {
         // Bright ionization core, Orion/Westerlund style: a hot white-pink
         // heart in the nebula with a young star cluster embedded in it. Kept
         // near an edge so the capture window doesn't cover it.
-        let core = if !deep_field && !cluster_field && !veil && rng.random_bool(0.65) {
-            let (cx, cy) = corner_anchor(rng, width, height, 0.08);
-            Some((cx, cy, rng.random_range(0.5..=1.0)))
-        } else {
-            None
-        };
+        let core =
+            if !deep_field && !cluster_field && !veil && !remnant_kind && rng.random_bool(0.65) {
+                let (cx, cy) = corner_anchor(rng, width, height, 0.08);
+                Some((cx, cy, rng.random_range(0.5..=1.0)))
+            } else {
+                None
+            };
         if let Some((cx, cy, strength)) = core {
             stars.extend(generate_cluster(rng, cx, cy, min_side, strength));
         }
         // Star-forming knots: small saturated pink clumps scattered through
         // the gas, like the Antennae's star-birth regions.
-        let knots = if deep_field || cluster_field || veil {
+        let knots = if deep_field || cluster_field || veil || remnant_kind {
             Vec::new()
         } else {
             (0..rng.random_range(2..=6))
@@ -287,59 +639,138 @@ impl Scene {
                 })
                 .collect()
         };
-        let nebula_strength = if deep_field || cluster_field || veil {
+        let mut nebula_strength = if deep_field || cluster_field || veil || remnant_kind {
             rng.random_range(0.05..=0.16)
         } else {
             rng.random_range(0.75..=1.0)
         };
         // Foreground hero spiral, corner-anchored so the window doesn't
-        // swallow it.
-        let hero = if !deep_field && !cluster_field && !veil && rng.random_bool(0.3) {
-            let (hx, hy) = corner_anchor(rng, width, height, 0.1);
-            Some(HeroGalaxy {
-                x: hx,
-                y: hy,
-                radius: min_side * rng.random_range(0.16..=0.3),
-                angle: rng.random_range(0.0..std::f32::consts::PI),
-                flatten: rng.random_range(0.3..=0.75),
-                twist: rng.random_range(1.8..=3.2) * if rng.random_bool(0.5) { 1.0 } else { -1.0 },
-                seed: rng.random(),
-            })
-        } else {
+        // swallow it. A `galaxy` pin forces it; `alma`/`ring`/`butterfly`
+        // suppress it so the focal slot below can fire instead. The roll stays
+        // behind the gate so an unpinned scene draws exactly as before.
+        let hero_gate = !deep_field && !cluster_field && !veil && !remnant_kind;
+        let hero = if !hero_gate {
             None
+        } else {
+            let want_hero = match want {
+                Some(SceneKind::Galaxy) => true,
+                Some(
+                    SceneKind::Alma | SceneKind::Ring | SceneKind::Butterfly | SceneKind::EdgeOn,
+                ) => false,
+                _ => rng.random_bool(0.3),
+            };
+            if want_hero {
+                // Hug the corner (small inset) so the bright core lands inside
+                // the visible padding band instead of behind the window.
+                let (hx, hy) = corner_anchor(rng, width, height, 0.04);
+                Some(HeroGalaxy {
+                    x: hx,
+                    y: hy,
+                    radius: min_side * rng.random_range(0.16..=0.3),
+                    angle: rng.random_range(0.0..std::f32::consts::PI),
+                    flatten: rng.random_range(0.3..=0.75),
+                    twist: rng.random_range(1.8..=3.2)
+                        * if rng.random_bool(0.5) { 1.0 } else { -1.0 },
+                    jwst,
+                    seed: rng.random(),
+                })
+            } else {
+                None
+            }
         };
+        // A hero spiral is the subject: quiet the surrounding gas so it reads
+        // as a galaxy on a dark field instead of competing with the nebula.
+        if hero.is_some() {
+            nebula_strength *= 0.3;
+        }
         let shell_spacing = if core.is_some() && rng.random_bool(0.5) {
             Some(min_side * rng.random_range(0.05..=0.1))
         } else {
             None
         };
-        // Planetary nebula slot: either an M57 donut (blue heart, teal-white
-        // middle, wobbling orange rim) or a Twin-Jet bipolar butterfly.
+        // Focal-object slot: an M57 donut, a Twin-Jet bipolar butterfly, an
+        // ALMA-style protoplanetary disc, or an edge-on dust-lane galaxy.
+        // `ring`/`butterfly`/`alma`/`edge-on` pins force it to fire and pick
+        // that object.
         let mut ring_nebula = None;
         let mut butterfly = None;
-        if !deep_field && !cluster_field && !veil && hero.is_none() && rng.random_bool(0.2) {
-            let (rx, ry) = corner_anchor(rng, width, height, 0.1);
-            if rng.random_bool(0.5) {
-                ring_nebula = Some((rx, ry, min_side * rng.random_range(0.06..=0.12)));
-            } else {
-                butterfly = Some((
-                    rx,
-                    ry,
-                    min_side * rng.random_range(0.1..=0.17),
-                    rng.random_range(0.0..std::f32::consts::PI),
-                ));
-                // The hot central star that lights the lobes.
-                stars.push(Star {
-                    x: rx,
-                    y: ry,
-                    radius: 2.4,
-                    brightness: 1.0,
-                    color: [244.0, 250.0, 255.0],
-                    spike: 12.0,
-                });
+        let mut alma = None;
+        let mut edge_on = None;
+        let focal_gate = !deep_field && !cluster_field && !veil && !remnant_kind && hero.is_none();
+        if focal_gate {
+            let want_focal = matches!(
+                want,
+                Some(SceneKind::Ring | SceneKind::Butterfly | SceneKind::Alma | SceneKind::EdgeOn)
+            );
+            let fires = match want {
+                Some(_) => want_focal,
+                None => rng.random_bool(0.25),
+            };
+            let choice = match want {
+                Some(SceneKind::Ring) => 0,
+                Some(SceneKind::Butterfly) => 1,
+                Some(SceneKind::Alma) => 2,
+                Some(SceneKind::EdgeOn) => 3,
+                _ => u32::MAX, // rolled below only when unpinned
+            };
+            if fires {
+                // Modest inset so the focal object clears the window edge.
+                let (rx, ry) = corner_anchor(rng, width, height, 0.06);
+                let choice = if choice == u32::MAX {
+                    rng.random_range(0..4u32)
+                } else {
+                    choice
+                };
+                match choice {
+                    0 => {
+                        ring_nebula = Some((rx, ry, min_side * rng.random_range(0.06..=0.12)));
+                    }
+                    1 => {
+                        butterfly = Some((
+                            rx,
+                            ry,
+                            min_side * rng.random_range(0.1..=0.17),
+                            rng.random_range(0.0..std::f32::consts::PI),
+                        ));
+                        // The hot central star that lights the lobes.
+                        stars.push(Star {
+                            x: rx,
+                            y: ry,
+                            radius: 2.4,
+                            brightness: 1.0,
+                            color: [244.0, 250.0, 255.0],
+                            spike: 12.0,
+                        });
+                    }
+                    2 => {
+                        alma = Some((
+                            rx,
+                            ry,
+                            min_side * rng.random_range(0.08..=0.14),
+                            rng.random_range(0.0..std::f32::consts::PI),
+                            rng.random_range(0.3..=0.6),
+                        ));
+                    }
+                    _ => {
+                        edge_on = Some((
+                            rx,
+                            ry,
+                            min_side * rng.random_range(0.16..=0.26),
+                            rng.random_range(0.0..std::f32::consts::PI),
+                        ));
+                    }
+                }
             }
         }
-        Scene {
+        // Chandra remnant shell: large, arcing through the frame from a
+        // corner anchor.
+        let remnant = if remnant_kind {
+            let (rx, ry) = corner_anchor(rng, width, height, 0.05);
+            Some((rx, ry, min_side * rng.random_range(0.3..=0.5)))
+        } else {
+            None
+        };
+        let mut scene = Scene {
             noise_seed: rng.random(),
             nebula_offset: (rng.random_range(0.0..64.0), rng.random_range(0.0..64.0)),
             nebula_scale: rng.random_range(2.4..=4.6),
@@ -353,6 +784,7 @@ impl Scene {
             galaxies,
             hero,
             sun,
+            jwst,
             ring_nebula,
             butterfly,
             veil: if veil {
@@ -360,7 +792,30 @@ impl Scene {
             } else {
                 None
             },
+            alma,
+            remnant,
+            edge_on,
+            lensing,
+            cmb,
+        };
+        // A CMB frame is just the mottle: no stars, no objects.
+        if cmb {
+            scene.stars.clear();
+            scene.galaxies.clear();
+            scene.knots.clear();
+            scene.core = None;
+            scene.shell_spacing = None;
+            scene.hero = None;
+            scene.sun = None;
+            scene.ring_nebula = None;
+            scene.butterfly = None;
+            scene.veil = None;
+            scene.alma = None;
+            scene.remnant = None;
+            scene.edge_on = None;
+            scene.lensing = None;
         }
+        scene
     }
 }
 
@@ -517,8 +972,14 @@ fn generate_sun(rng: &mut StdRng, width: u32, height: u32) -> Option<Sun> {
     if rng.random_range(0..10) < 7 {
         return None;
     }
+    Some(make_sun(rng, width, height))
+}
+
+/// Always builds a sun. Used by the random path (behind the 70% None gate) and
+/// by the `sun`/`sdo` scene pins, which need one guaranteed.
+fn make_sun(rng: &mut StdRng, width: u32, height: u32) -> Sun {
     let (x, y) = corner_anchor(rng, width, height, 0.02);
-    Some(Sun {
+    Sun {
         x,
         y,
         radius: width.min(height) as f32 * rng.random_range(0.16..=0.28),
@@ -527,7 +988,8 @@ fn generate_sun(rng: &mut StdRng, width: u32, height: u32) -> Option<Sun> {
         } else {
             [255.0, 176.0, 120.0] // red giant warmth
         },
-    })
+        sdo: rng.random_bool(0.4),
+    }
 }
 
 /// A point near one of the four canvas corners (the visible padding band),
@@ -552,6 +1014,9 @@ fn corner_anchor(rng: &mut StdRng, width: u32, height: u32, inset: f32) -> (f32,
 /// dark dust lanes, and film grain. One pixel at a time like the gradient
 /// backdrop, so the two paths share their cost profile.
 fn base_layer(width: u32, height: u32, style: &PresentationStyle, scene: &Scene) -> RgbaImage {
+    if scene.cmb {
+        return cmb_layer(width, height, scene);
+    }
     let stops = style.stops.map(to_f32);
     let glow_a = to_f32(style.glow_a);
     let glow_b = to_f32(style.glow_b);
@@ -592,6 +1057,21 @@ fn base_layer(width: u32, height: u32, style: &PresentationStyle, scene: &Scene)
             scene.noise_seed ^ 0xC3C3,
             NEBULA_OCTAVES,
         ));
+        // JWST dust reads as clumpy cauliflower globules, not smooth haze. A
+        // high-frequency lump field breaks the gas into puffs by modulating
+        // each cloud downward in the gaps between clumps.
+        let (cloud_a, cloud_b, cloud_c) = if scene.jwst {
+            let lump = smoothstep(fbm(
+                nx * 4.4 + 3.3,
+                ny * 4.4 + 8.8,
+                scene.noise_seed ^ 0xB011,
+                3,
+            ));
+            let factor = 0.32 + 0.68 * lump;
+            (cloud_a * factor, cloud_b * factor, cloud_c * factor)
+        } else {
+            (cloud_a, cloud_b, cloud_c)
+        };
         color = mix3(color, glow_a, cloud_a * 0.95 * scene.nebula_strength);
         color = mix3(color, glow_b, cloud_b * 0.8 * scene.nebula_strength);
         color = mix3(color, stops[2], cloud_c * 0.5 * scene.nebula_strength);
@@ -685,7 +1165,57 @@ fn base_layer(width: u32, height: u32, style: &PresentationStyle, scene: &Scene)
     })
 }
 
-fn draw_stars(canvas: &mut RgbaImage, stars: &[Star]) {
+/// JWST's six primary diffraction spikes (hexagonal mirror), at 30 deg
+/// intervals starting from vertical, as unit vectors. The instrument also
+/// throws two fainter horizontal spikes off the secondary-mirror struts; those
+/// are drawn separately at reduced length.
+const JWST_SPIKE_DIRS: [(f32, f32); 6] = [
+    (0.0, 1.0),
+    (0.866_025_4, 0.5),
+    (0.866_025_4, -0.5),
+    (0.0, -1.0),
+    (-0.866_025_4, -0.5),
+    (-0.866_025_4, 0.5),
+];
+
+/// Planck easter egg: the whole frame is cosmic-microwave-background mottle,
+/// the blue-to-orange temperature anisotropy map with nothing else on it.
+fn cmb_layer(width: u32, height: u32, scene: &Scene) -> RgbaImage {
+    let aspect = height as f32 / width.max(1) as f32;
+    ImageBuffer::from_fn(width, height, |x, y| {
+        let fx = x as f32 / width.max(1) as f32;
+        let fy = y as f32 / height.max(1) as f32;
+        let t = fbm(
+            fx * 9.0 + scene.nebula_offset.0,
+            fy * 9.0 * aspect + scene.nebula_offset.1,
+            scene.noise_seed,
+            5,
+        );
+        // Diverging temperature palette: cold blue through pale to hot orange.
+        let color = if t < 0.5 {
+            mix3(
+                [36.0, 60.0, 150.0],
+                [226.0, 216.0, 196.0],
+                smoothstep(t * 2.0),
+            )
+        } else {
+            mix3(
+                [226.0, 216.0, 196.0],
+                [236.0, 116.0, 32.0],
+                smoothstep((t - 0.5) * 2.0),
+            )
+        };
+        let grain = grain_noise(x, y, scene.noise_seed) * GRAIN_STRENGTH;
+        Rgba([
+            quantize(color[0] + grain),
+            quantize(color[1] + grain),
+            quantize(color[2] + grain),
+            255,
+        ])
+    })
+}
+
+fn draw_stars(canvas: &mut RgbaImage, stars: &[Star], jwst: bool) {
     for star in stars {
         let reach = (star.radius * 3.0).max(star.spike).ceil() as i32;
         let cx = star.x;
@@ -694,16 +1224,25 @@ fn draw_stars(canvas: &mut RgbaImage, stars: &[Star]) {
             for dx in -reach..=reach {
                 let px = cx as i32 + dx;
                 let py = cy as i32 + dy;
-                let distance = ((dx * dx + dy * dy) as f32).sqrt();
+                let fdx = dx as f32;
+                let fdy = dy as f32;
+                let distance = (fdx * fdx + fdy * fdy).sqrt();
                 // Gaussian-ish core.
                 let mut amount = (-((distance / star.radius).powi(2))).exp() * star.brightness;
-                // Diffraction spikes: thin horizontal and vertical rays.
                 if star.spike > 0.0 {
-                    let along = dx.abs().max(dy.abs()) as f32;
-                    if (dx == 0 || dy == 0) && along <= star.spike {
-                        amount =
-                            amount.max((1.0 - along / star.spike).powi(2) * star.brightness * 0.7);
-                    }
+                    let spike = if jwst {
+                        jwst_spike(fdx, fdy, star.spike, star.brightness)
+                    } else {
+                        // Classic Hubble 4-point cross: thin vertical and
+                        // horizontal rays.
+                        let along = dx.abs().max(dy.abs()) as f32;
+                        if (dx == 0 || dy == 0) && along <= star.spike {
+                            (1.0 - along / star.spike).powi(2) * star.brightness * 0.7
+                        } else {
+                            0.0
+                        }
+                    };
+                    amount = amount.max(spike);
                 }
                 if amount > 0.01 {
                     add_light(canvas, px, py, star.color, amount);
@@ -711,6 +1250,31 @@ fn draw_stars(canvas: &mut RgbaImage, stars: &[Star]) {
             }
         }
     }
+}
+
+/// Brightness contribution of the JWST spike set at a pixel offset: six full
+/// primary rays plus two half-length horizontal struts, each a thin ray that
+/// fades along its length.
+fn jwst_spike(fdx: f32, fdy: f32, length: f32, brightness: f32) -> f32 {
+    let mut best = 0.0f32;
+    let ray = |ux: f32, uy: f32, len: f32, strength: f32| -> f32 {
+        let along = fdx * ux + fdy * uy;
+        if along < 0.0 || along > len {
+            return 0.0;
+        }
+        let perp = (fdx * -uy + fdy * ux).abs();
+        // A ray ~1.4px wide that tapers to a point at its tip.
+        let width = (1.0 - along / len).clamp(0.0, 1.0);
+        let profile = (1.0 - perp / (0.7 + 0.7 * width)).clamp(0.0, 1.0);
+        (1.0 - along / len).powi(2) * profile * brightness * strength
+    };
+    for (ux, uy) in JWST_SPIKE_DIRS {
+        best = best.max(ray(ux, uy, length, 0.72));
+    }
+    // Secondary-strut horizontal pair, shorter and fainter.
+    best = best.max(ray(1.0, 0.0, length * 0.55, 0.38));
+    best = best.max(ray(-1.0, 0.0, length * 0.55, 0.38));
+    best
 }
 
 /// The big foreground spiral: pale disc glow, two log-spiral blue arms cut by
@@ -742,23 +1306,36 @@ fn draw_hero_galaxy(canvas: &mut RgbaImage, hero: &HeroGalaxy) {
                 4,
             );
             let dust = ((filaments - 0.48) / 0.22).clamp(0.0, 1.0);
-            add_light(
-                canvas,
-                px,
-                py,
-                [225.0, 215.0, 205.0],
-                disc * 0.45 * (1.0 - dust * 0.8),
-            );
+            // JWST mid-IR spirals invert the Hubble palette: warm red/orange
+            // PAH-dust arms around an electric blue-white old-star core.
+            let (disc_tint, arm_tint, core_tint, speckle_tint, knot_tint) = if hero.jwst {
+                (
+                    [180.0, 150.0, 150.0],
+                    [235.0, 96.0, 54.0],
+                    [180.0, 220.0, 255.0],
+                    [210.0, 232.0, 255.0],
+                    [255.0, 210.0, 120.0],
+                )
+            } else {
+                (
+                    [225.0, 215.0, 205.0],
+                    [150.0, 175.0, 235.0],
+                    [255.0, 226.0, 185.0],
+                    [205.0, 222.0, 255.0],
+                    [255.0, 140.0, 190.0],
+                )
+            };
+            add_light(canvas, px, py, disc_tint, disc * 0.45 * (1.0 - dust * 0.8));
             let arm_light = arm * disc * (1.0 - dust * 0.85);
-            add_light(canvas, px, py, [150.0, 175.0, 235.0], arm_light * 0.5);
-            // Per-pixel sparkle: blue cluster speckle and pink knots.
+            add_light(canvas, px, py, arm_tint, arm_light * 0.5);
+            // Per-pixel sparkle: cluster speckle and star-forming knots.
             let sparkle = cell_hash(px as i64, py as i64, hero.seed);
             if sparkle > 0.982 && arm_light > 0.06 {
-                add_light(canvas, px, py, [205.0, 222.0, 255.0], 0.75);
+                add_light(canvas, px, py, speckle_tint, 0.75);
             } else if sparkle < 0.005 && arm_light > 0.08 {
-                add_light(canvas, px, py, [255.0, 140.0, 190.0], 0.7);
+                add_light(canvas, px, py, knot_tint, 0.7);
             }
-            add_light(canvas, px, py, [255.0, 226.0, 185.0], core * 0.95);
+            add_light(canvas, px, py, core_tint, core * 0.95);
         }
     }
 }
@@ -785,7 +1362,11 @@ fn draw_galaxy(canvas: &mut RgbaImage, galaxy: &Galaxy) {
     }
 }
 
-fn draw_sun(canvas: &mut RgbaImage, sun: &Sun) {
+fn draw_sun(canvas: &mut RgbaImage, sun: &Sun, seed: u64) {
+    if sun.sdo {
+        draw_sdo_sun(canvas, sun, seed);
+        return;
+    }
     let reach = (sun.radius * 2.2).ceil() as i32;
     for dy in -reach..=reach {
         for dx in -reach..=reach {
@@ -804,6 +1385,74 @@ fn draw_sun(canvas: &mut RgbaImage, sun: &Sun) {
     }
 }
 
+/// SDO extreme-UV sun: a hard-limbed gold disc textured with granulation
+/// noise, a bright limb, a short corona, and a few coronal loop arcs rising
+/// off the edge.
+fn draw_sdo_sun(canvas: &mut RgbaImage, sun: &Sun, seed: u64) {
+    // The glow radius stays sun.radius; the visible disc is a fraction of it.
+    let disc_radius = sun.radius * 0.55;
+    let reach = (sun.radius * 1.4).ceil() as i32;
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let fdx = dx as f32;
+            let fdy = dy as f32;
+            let distance = (fdx * fdx + fdy * fdy).sqrt() / disc_radius;
+            if distance > 2.5 {
+                continue;
+            }
+            let px = sun.x as i32 + dx;
+            let py = sun.y as i32 + dy;
+            if distance <= 1.0 {
+                // Granulated EUV surface: gold base churned by noise.
+                let churn = fbm(
+                    fdx / disc_radius * 5.0 + 3.1,
+                    fdy / disc_radius * 5.0 + 6.4,
+                    seed ^ 0x50D0,
+                    4,
+                );
+                let surface = mix3([214.0, 120.0, 30.0], [255.0, 214.0, 110.0], churn);
+                // Limb brightening: EUV suns glow hardest at the edge.
+                let limb = 1.0 + 0.5 * (-((distance - 1.0) / 0.08).powi(2)).exp();
+                add_light(canvas, px, py, surface, (0.75 + 0.25 * churn) * limb);
+            } else {
+                // Short corona falloff past the limb.
+                let corona = (-((distance - 1.0) * 2.4).powi(2)).exp() * 0.4;
+                add_light(canvas, px, py, [255.0, 190.0, 90.0], corona);
+            }
+        }
+    }
+    // Coronal loops: thin arcs anchored on the limb, drawn as partial ring
+    // bands of small circles whose centers sit on the disc edge.
+    let mut rng = StdRng::seed_from_u64(seed ^ 0x100C);
+    for _ in 0..rng.random_range(2..=4) {
+        let anchor = rng.random_range(0.0..std::f32::consts::TAU);
+        let loop_radius = disc_radius * rng.random_range(0.18..=0.4);
+        let cx = sun.x + anchor.cos() * disc_radius;
+        let cy = sun.y + anchor.sin() * disc_radius;
+        let reach = (loop_radius * 1.3).ceil() as i32;
+        for dy in -reach..=reach {
+            for dx in -reach..=reach {
+                let fdx = dx as f32;
+                let fdy = dy as f32;
+                let ring = ((fdx * fdx + fdy * fdy).sqrt() - loop_radius).abs();
+                if ring > 1.6 {
+                    continue;
+                }
+                let px = (cx as i32) + dx;
+                let py = (cy as i32) + dy;
+                // Only the part of the loop outside the disc reads as an arc.
+                let gx = cx + fdx - sun.x;
+                let gy = cy + fdy - sun.y;
+                if gx * gx + gy * gy < disc_radius * disc_radius {
+                    continue;
+                }
+                let band = (1.0 - ring / 1.6).clamp(0.0, 1.0);
+                add_light(canvas, px, py, [255.0, 216.0, 130.0], band * 0.5);
+            }
+        }
+    }
+}
+
 /// Additive light blending (stars, glows) clamped to opaque white.
 fn add_light(canvas: &mut RgbaImage, x: i32, y: i32, color: [f32; 3], amount: f32) {
     let Some(pixel) = pixel_mut(canvas, x, y) else {
@@ -812,6 +1461,17 @@ fn add_light(canvas: &mut RgbaImage, x: i32, y: i32, color: [f32; 3], amount: f3
     for (channel, tint) in pixel.0.iter_mut().zip(color) {
         let value = f32::from(*channel) + tint * amount;
         *channel = value.min(255.0) as u8;
+    }
+}
+
+/// Multiplicative darkening (dust lanes): scales a pixel toward black.
+fn darken(canvas: &mut RgbaImage, x: i32, y: i32, amount: f32) {
+    let Some(pixel) = pixel_mut(canvas, x, y) else {
+        return;
+    };
+    let keep = 1.0 - amount.clamp(0.0, 1.0);
+    for channel in pixel.0.iter_mut().take(3) {
+        *channel = (f32::from(*channel) * keep) as u8;
     }
 }
 
@@ -989,15 +1649,27 @@ mod tests {
         let mut butterflies = 0;
         let mut veils = 0;
         let mut suns = 0;
+        let mut jwst = 0;
+        let mut jwst_heroes = 0;
+        let mut almas = 0;
+        let mut remnants = 0;
+        let mut cmbs = 0;
+        let mut sdo_suns = 0;
         for seed in 0..400u64 {
             let mut rng = StdRng::seed_from_u64(seed ^ SCENE_SEED_SALT);
-            let scene = Scene::generate(&mut rng, 1600, 1200);
+            let scene = Scene::generate(&mut rng, 1600, 1200, None);
             deep_fields += usize::from(scene.galaxies.len() >= 35 && scene.core.is_none());
             heroes += usize::from(scene.hero.is_some());
             rings += usize::from(scene.ring_nebula.is_some());
             butterflies += usize::from(scene.butterfly.is_some());
             veils += usize::from(scene.veil.is_some());
             suns += usize::from(scene.sun.is_some());
+            jwst += usize::from(scene.jwst);
+            jwst_heroes += usize::from(scene.hero.as_ref().is_some_and(|h| h.jwst));
+            almas += usize::from(scene.alma.is_some());
+            remnants += usize::from(scene.remnant.is_some());
+            cmbs += usize::from(scene.cmb);
+            sdo_suns += usize::from(scene.sun.as_ref().is_some_and(|s| s.sdo));
         }
         assert!(deep_fields > 0, "no deep-field seeds in 0..400");
         assert!(heroes > 0, "no hero-galaxy seeds in 0..400");
@@ -1005,6 +1677,66 @@ mod tests {
         assert!(butterflies > 0, "no butterfly seeds in 0..400");
         assert!(veils > 0, "no veil seeds in 0..400");
         assert!(suns > 0, "no sun seeds in 0..400");
+        // Both spike styles must appear, and at least one JWST-palette hero.
+        assert!(
+            jwst > 0 && jwst < 400,
+            "JWST look never/always fires: {jwst}"
+        );
+        assert!(jwst_heroes > 0, "no JWST-palette hero galaxy in 0..400");
+        assert!(almas > 0, "no ALMA-disc seeds in 0..400");
+        assert!(remnants > 0, "no Chandra-remnant seeds in 0..400");
+        assert!(cmbs > 0, "no CMB seeds in 0..400");
+        assert!(sdo_suns > 0, "no SDO-sun seeds in 0..400");
+    }
+
+    #[test]
+    fn pinned_scenes_force_their_look() {
+        // A pin must produce its scene for any seed, not just lucky ones.
+        for seed in [1u64, 7, 42, 99, 500] {
+            let mk = |kind| {
+                let mut rng = StdRng::seed_from_u64(seed ^ SCENE_SEED_SALT);
+                Scene::generate(&mut rng, 1600, 1200, Some(kind))
+            };
+            assert!(mk(SceneKind::Cmb).cmb, "cmb pin (seed {seed})");
+            assert!(
+                mk(SceneKind::Remnant).remnant.is_some(),
+                "remnant (seed {seed})"
+            );
+            assert!(mk(SceneKind::Alma).alma.is_some(), "alma (seed {seed})");
+            assert!(
+                mk(SceneKind::Ring).ring_nebula.is_some(),
+                "ring (seed {seed})"
+            );
+            assert!(
+                mk(SceneKind::Butterfly).butterfly.is_some(),
+                "butterfly (seed {seed})"
+            );
+            assert!(mk(SceneKind::Galaxy).hero.is_some(), "galaxy (seed {seed})");
+            assert!(mk(SceneKind::Jwst).jwst, "jwst (seed {seed})");
+            assert!(!mk(SceneKind::Hubble).jwst, "hubble (seed {seed})");
+            let sun = mk(SceneKind::Sdo).sun;
+            assert!(sun.is_some_and(|s| s.sdo), "sdo (seed {seed})");
+            assert!(mk(SceneKind::Sun).sun.is_some(), "sun (seed {seed})");
+            let deep = mk(SceneKind::DeepField);
+            assert!(deep.galaxies.len() >= 35, "deep-field (seed {seed})");
+            assert!(mk(SceneKind::Veil).veil.is_some(), "veil (seed {seed})");
+            assert!(
+                mk(SceneKind::EdgeOn).edge_on.is_some(),
+                "edge-on (seed {seed})"
+            );
+            assert!(
+                mk(SceneKind::Lensing).lensing.is_some(),
+                "lensing (seed {seed})"
+            );
+        }
+    }
+
+    #[test]
+    fn scene_names_round_trip() {
+        for name in SceneKind::NAMES {
+            assert!(SceneKind::from_name(name).is_some(), "{name} did not parse");
+        }
+        assert!(SceneKind::from_name("nope").is_none());
     }
 
     #[test]
