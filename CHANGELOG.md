@@ -6,6 +6,48 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-18
+
+### Added
+- **Procedural deep-space backdrops for shot-cards.** Space palettes render a
+  seeded scene behind the card: domain-warped nebulae with bright ionization
+  fronts and dark dust lanes, layered starfields, star-forming knots, galaxy
+  smudges, occasional suns, and rare ultra-deep-field seeds. Eight palettes are
+  color-sampled from astrophotography of real objects (`orion-emission`,
+  `carina-hubble`, `pleiades-reflection`, `rho-ophiuchi`, `milkyway-core`,
+  `andromeda-haze`, `horsehead-flame`, `lagoon-trifid`). Random styling now
+  picks a space palette; the five original gradient palettes remain available
+  by name.
+- **Telescope scene variants.** Around 45% of scenes take a JWST look (6-point
+  diffraction spikes, clumpy globular dust, an inverted red-arm/blue-core
+  galaxy). Other looks in the pool: ALMA protoplanetary discs, SDO extreme-UV
+  suns with coronal loops, Chandra fragmented remnant shells, ring and
+  Twin-Jet butterfly planetary nebulae, veil-remnant ribbons, edge-on
+  dust-lane galaxies, gravitational-lensing arcs, and a rare Planck CMB frame.
+- **`cloche polish --scene <name>`** (and the MCP `polish` tool's `scene`
+  argument) pins a specific deep-space look instead of the seed's random pick:
+  `nebula`, `jwst`, `hubble`, `galaxy`, `alma`, `ring`, `butterfly`, `edge-on`,
+  `sun`, `sdo`, `cluster`, `deep-field`, `lensing`, `veil`, `remnant`, `cmb`.
+  The same `--style-seed` reproduces a pinned scene exactly. `--scene` only
+  applies to space palettes.
+- Targeted reel zooms: a zoom cue takes optional `x`/`y` (0 to 1 across the
+  footage) to pick its focus point, defaulting to center.
+
+### Changed
+- Reel overlay motion (zooms, cards, captions) now animates at the output frame
+  rate, and the default `--fps` is 60, so overlays stay smooth over 30fps source
+  footage. Zoom cues ease in and out with a continuous envelope instead of a
+  linear ramp that snapped scale back to 1.0 at the cue's end. The Remotion
+  background moved to a vendored grain-gradient shader driven from the frame.
+
+### Fixed
+- Clipboard publication now runs before best-effort text extraction, so an
+  immediate paste no longer retrieves the preceding capture on X11.
+
+### Docs
+- README documents the space palettes and the `--scene` picker. The workflow
+  diagram was standardized, and CI now skips docs-only changes.
+
 ## [0.6.0] - 2026-06-27
 
 ### Added
