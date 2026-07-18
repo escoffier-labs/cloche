@@ -321,3 +321,18 @@ seeds render identically. Where a roll was previously behind a short-circuit
 gate (hero, focal object), the pinned override stays inside that gate so it
 never consumes an extra draw on the unpinned path. `--scene` on a gradient
 palette is a no-op warning, since gradients have no scene.
+
+## Occlusion fix + edge-on galaxy + lensing (2026-07-18)
+
+- Focal occlusion: corner-anchored hero galaxies now hug the corner
+  (inset 0.1 -> 0.04) and the focal-object slot uses 0.06, so bright cores
+  land inside the visible padding band instead of behind the window. A hero
+  spiral also dims the surrounding nebula to 0.3x so it reads as a galaxy on a
+  dark field rather than competing with the gas.
+- Edge-on dust-lane galaxy (Sombrero/Needle): a fourth focal object - a
+  knife-edge sliver (flatten 0.14) with a warm bulge, split by a dark dust
+  lane along the major axis. Pin: `edge-on`.
+- Gravitational lensing: deep-field scenes gain (~40%, or forced) a warm
+  elliptical lens galaxy ringed by 3-5 thin blue arcs bowed at 1.6-2.6x its
+  radius. Pin: `lensing` (forces a deep field with the lens).
+- `SceneKind` grew to 16 names; the pinned-scene test covers both new looks.

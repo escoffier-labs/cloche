@@ -46,8 +46,10 @@ pub enum SceneKind {
     Butterfly,
     Sun,
     Sdo,
+    EdgeOn,
     Cluster,
     DeepField,
+    Lensing,
     Veil,
     Remnant,
     Cmb,
@@ -55,7 +57,7 @@ pub enum SceneKind {
 
 impl SceneKind {
     /// All names accepted by [`SceneKind::from_name`], in menu order.
-    pub const NAMES: [&'static str; 14] = [
+    pub const NAMES: [&'static str; 16] = [
         "nebula",
         "jwst",
         "hubble",
@@ -63,10 +65,12 @@ impl SceneKind {
         "alma",
         "ring",
         "butterfly",
+        "edge-on",
         "sun",
         "sdo",
         "cluster",
         "deep-field",
+        "lensing",
         "veil",
         "remnant",
         "cmb",
@@ -81,10 +85,12 @@ impl SceneKind {
             "alma" => Self::Alma,
             "ring" => Self::Ring,
             "butterfly" => Self::Butterfly,
+            "edge-on" => Self::EdgeOn,
             "sun" => Self::Sun,
             "sdo" => Self::Sdo,
             "cluster" => Self::Cluster,
             "deep-field" => Self::DeepField,
+            "lensing" => Self::Lensing,
             "veil" => Self::Veil,
             "remnant" => Self::Remnant,
             "cmb" => Self::Cmb,
@@ -117,6 +123,12 @@ pub fn render(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
     }
     if let Some((x, y, radius)) = scene.remnant {
         draw_remnant(&mut canvas, x, y, radius, scene.noise_seed);
+    }
+    if let Some((x, y, radius, angle)) = scene.edge_on {
+        draw_edge_on_galaxy(&mut canvas, x, y, radius, angle, scene.noise_seed);
+    }
+    if let Some((x, y, radius)) = scene.lensing {
+        draw_lensing(&mut canvas, x, y, radius, scene.noise_seed);
     }
     draw_stars(&mut canvas, &scene.stars, scene.jwst);
     if let Some(sun) = &scene.sun {
@@ -301,6 +313,104 @@ fn draw_butterfly(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32, angle: f3
     }
 }
 
+/// Edge-on dust-lane galaxy, Sombrero/Needle style: a knife-edge bright sliver
+/// with a warm central bulge, split lengthwise by a dark dust lane.
+fn draw_edge_on_galaxy(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32, angle: f32, seed: u64) {
+    // Very flattened disc: long and thin.
+    let flatten = 0.14;
+    let reach = (radius * 1.2).ceil() as i32;
+    let (sin, cos) = angle.sin_cos();
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let major = (dx as f32 * cos + dy as f32 * sin) / radius;
+            let minor = (-(dx as f32) * sin + dy as f32 * cos) / (radius * flatten);
+            let distance = (major * major + minor * minor).sqrt();
+            if distance > 1.2 {
+                continue;
+            }
+            let px = x as i32 + dx;
+            let py = y as i32 + dy;
+            // Disc glow, tapering along the length; slight noise mottling.
+            let mottle = 0.8 + 0.2 * fbm(major * 4.0 + 5.0, minor * 4.0 + 9.0, seed ^ 0xED9E, 3);
+            let disc = (-(distance * 1.4).powi(2)).exp() * mottle;
+            add_light(canvas, px, py, [214.0, 214.0, 226.0], disc * 0.8);
+            // Warm central bulge.
+            let bulge = (-(distance * 3.4).powi(2)).exp();
+            add_light(canvas, px, py, [255.0, 232.0, 196.0], bulge);
+            // Dark dust lane: a thin absorbing band along the major axis
+            // (minor ~ 0), strongest across the disc body.
+            let lane =
+                (-(minor / 0.32).powi(2)).exp() * (1.0 - (major.abs() / 1.0).powi(2)).max(0.0);
+            if lane > 0.02 {
+                darken(canvas, px, py, lane * 0.55);
+            }
+        }
+    }
+}
+
+/// Gravitational lens: a warm elliptical cluster galaxy with a few thin blue
+/// arcs of stretched background galaxies bowed around it, like the arcs in
+/// Webb's deep-field cluster shots.
+fn draw_lensing(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32, seed: u64) {
+    // The lens galaxy: a soft warm-white elliptical blob.
+    let reach = (radius * 2.4).ceil() as i32;
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let distance = ((dx * dx + dy * dy) as f32).sqrt() / radius;
+            if distance > 2.4 {
+                continue;
+            }
+            let glow = (-(distance * 1.4).powi(2)).exp();
+            add_light(
+                canvas,
+                x as i32 + dx,
+                y as i32 + dy,
+                [255.0, 236.0, 206.0],
+                glow * 0.9,
+            );
+        }
+    }
+    // Einstein-ring arcs: short blue segments on circles around the lens, each
+    // at its own radius, angular center, and span. Deterministic from seed.
+    let mut rng = StdRng::seed_from_u64(seed ^ 0x1E45);
+    for _ in 0..rng.random_range(3..=5) {
+        let arc_radius = radius * rng.random_range(1.6..=2.6);
+        let center = rng.random_range(0.0..std::f32::consts::TAU);
+        let span = rng.random_range(0.4..=0.9);
+        let reach = (arc_radius + 3.0).ceil() as i32;
+        for dy in -reach..=reach {
+            for dx in -reach..=reach {
+                let r = ((dx * dx + dy * dy) as f32).sqrt();
+                if (r - arc_radius).abs() > 1.6 {
+                    continue;
+                }
+                let theta = (dy as f32).atan2(dx as f32);
+                // Angular distance from the arc center, wrapped to [-pi, pi].
+                let mut d = theta - center;
+                while d > std::f32::consts::PI {
+                    d -= std::f32::consts::TAU;
+                }
+                while d < -std::f32::consts::PI {
+                    d += std::f32::consts::TAU;
+                }
+                if d.abs() > span {
+                    continue;
+                }
+                // Bright mid-arc fading to the ends and across the width.
+                let along = 1.0 - (d.abs() / span).powi(2);
+                let across = 1.0 - (r - arc_radius).abs() / 1.6;
+                add_light(
+                    canvas,
+                    x as i32 + dx,
+                    y as i32 + dy,
+                    [150.0, 196.0, 255.0],
+                    along * across * 0.7,
+                );
+            }
+        }
+    }
+}
+
 /// Star-forming knot: a small saturated pink clump with a hot center, like
 /// the star-birth regions strung along the Antennae galaxies.
 fn draw_knot(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32) {
@@ -355,6 +465,11 @@ struct Scene {
     alma: Option<(f32, f32, f32, f32, f32)>,
     /// Chandra-style young supernova remnant shell: (x, y, radius).
     remnant: Option<(f32, f32, f32)>,
+    /// Edge-on dust-lane galaxy, Sombrero/Needle style: (x, y, radius, angle).
+    edge_on: Option<(f32, f32, f32, f32)>,
+    /// Gravitational lens: a cluster galaxy ringed by stretched arcs, in a
+    /// deep field. (x, y, radius).
+    lensing: Option<(f32, f32, f32)>,
     /// Planck easter egg: the whole frame is CMB mottle, nothing else drawn.
     cmb: bool,
 }
@@ -425,7 +540,8 @@ impl Scene {
         let force_kind = |k: SceneKind| want == Some(k);
         let (deep_field, cluster_field, veil, remnant_kind) = if want.is_some() {
             (
-                force_kind(SceneKind::DeepField),
+                // A lensing pin is a deep field with a lens cluster added.
+                force_kind(SceneKind::DeepField) || force_kind(SceneKind::Lensing),
                 force_kind(SceneKind::Cluster),
                 force_kind(SceneKind::Veil),
                 force_kind(SceneKind::Remnant),
@@ -451,6 +567,25 @@ impl Scene {
             generate_deep_field(rng, width, height, min_side)
         } else {
             generate_galaxies(rng, width, height)
+        };
+        // Gravitational lens: a bright cluster galaxy ringed by stretched arcs,
+        // in a deep field. Forced by the `lensing` pin, ~40% otherwise. The
+        // roll stays inside the deep-field branch so other scenes are
+        // unaffected.
+        let lensing = if deep_field {
+            let want_lens = match want {
+                Some(SceneKind::Lensing) => true,
+                Some(_) => false,
+                None => rng.random_bool(0.4),
+            };
+            if want_lens {
+                let (lx, ly) = corner_anchor(rng, width, height, 0.16);
+                Some((lx, ly, min_side * rng.random_range(0.05..=0.09)))
+            } else {
+                None
+            }
+        } else {
+            None
         };
         let sun = match want {
             Some(SceneKind::Sun) => {
@@ -504,7 +639,7 @@ impl Scene {
                 })
                 .collect()
         };
-        let nebula_strength = if deep_field || cluster_field || veil || remnant_kind {
+        let mut nebula_strength = if deep_field || cluster_field || veil || remnant_kind {
             rng.random_range(0.05..=0.16)
         } else {
             rng.random_range(0.75..=1.0)
@@ -519,11 +654,15 @@ impl Scene {
         } else {
             let want_hero = match want {
                 Some(SceneKind::Galaxy) => true,
-                Some(SceneKind::Alma | SceneKind::Ring | SceneKind::Butterfly) => false,
+                Some(
+                    SceneKind::Alma | SceneKind::Ring | SceneKind::Butterfly | SceneKind::EdgeOn,
+                ) => false,
                 _ => rng.random_bool(0.3),
             };
             if want_hero {
-                let (hx, hy) = corner_anchor(rng, width, height, 0.1);
+                // Hug the corner (small inset) so the bright core lands inside
+                // the visible padding band instead of behind the window.
+                let (hx, hy) = corner_anchor(rng, width, height, 0.04);
                 Some(HeroGalaxy {
                     x: hx,
                     y: hy,
@@ -539,22 +678,29 @@ impl Scene {
                 None
             }
         };
+        // A hero spiral is the subject: quiet the surrounding gas so it reads
+        // as a galaxy on a dark field instead of competing with the nebula.
+        if hero.is_some() {
+            nebula_strength *= 0.3;
+        }
         let shell_spacing = if core.is_some() && rng.random_bool(0.5) {
             Some(min_side * rng.random_range(0.05..=0.1))
         } else {
             None
         };
-        // Focal-object slot: an M57 donut, a Twin-Jet bipolar butterfly, or an
-        // ALMA-style protoplanetary disc. `ring`/`butterfly`/`alma` pins force
-        // it to fire and pick that object.
+        // Focal-object slot: an M57 donut, a Twin-Jet bipolar butterfly, an
+        // ALMA-style protoplanetary disc, or an edge-on dust-lane galaxy.
+        // `ring`/`butterfly`/`alma`/`edge-on` pins force it to fire and pick
+        // that object.
         let mut ring_nebula = None;
         let mut butterfly = None;
         let mut alma = None;
+        let mut edge_on = None;
         let focal_gate = !deep_field && !cluster_field && !veil && !remnant_kind && hero.is_none();
         if focal_gate {
             let want_focal = matches!(
                 want,
-                Some(SceneKind::Ring | SceneKind::Butterfly | SceneKind::Alma)
+                Some(SceneKind::Ring | SceneKind::Butterfly | SceneKind::Alma | SceneKind::EdgeOn)
             );
             let fires = match want {
                 Some(_) => want_focal,
@@ -564,12 +710,14 @@ impl Scene {
                 Some(SceneKind::Ring) => 0,
                 Some(SceneKind::Butterfly) => 1,
                 Some(SceneKind::Alma) => 2,
+                Some(SceneKind::EdgeOn) => 3,
                 _ => u32::MAX, // rolled below only when unpinned
             };
             if fires {
-                let (rx, ry) = corner_anchor(rng, width, height, 0.1);
+                // Modest inset so the focal object clears the window edge.
+                let (rx, ry) = corner_anchor(rng, width, height, 0.06);
                 let choice = if choice == u32::MAX {
-                    rng.random_range(0..3u32)
+                    rng.random_range(0..4u32)
                 } else {
                     choice
                 };
@@ -594,13 +742,21 @@ impl Scene {
                             spike: 12.0,
                         });
                     }
-                    _ => {
+                    2 => {
                         alma = Some((
                             rx,
                             ry,
                             min_side * rng.random_range(0.08..=0.14),
                             rng.random_range(0.0..std::f32::consts::PI),
                             rng.random_range(0.3..=0.6),
+                        ));
+                    }
+                    _ => {
+                        edge_on = Some((
+                            rx,
+                            ry,
+                            min_side * rng.random_range(0.16..=0.26),
+                            rng.random_range(0.0..std::f32::consts::PI),
                         ));
                     }
                 }
@@ -638,6 +794,8 @@ impl Scene {
             },
             alma,
             remnant,
+            edge_on,
+            lensing,
             cmb,
         };
         // A CMB frame is just the mottle: no stars, no objects.
@@ -654,6 +812,8 @@ impl Scene {
             scene.veil = None;
             scene.alma = None;
             scene.remnant = None;
+            scene.edge_on = None;
+            scene.lensing = None;
         }
         scene
     }
@@ -1304,6 +1464,17 @@ fn add_light(canvas: &mut RgbaImage, x: i32, y: i32, color: [f32; 3], amount: f3
     }
 }
 
+/// Multiplicative darkening (dust lanes): scales a pixel toward black.
+fn darken(canvas: &mut RgbaImage, x: i32, y: i32, amount: f32) {
+    let Some(pixel) = pixel_mut(canvas, x, y) else {
+        return;
+    };
+    let keep = 1.0 - amount.clamp(0.0, 1.0);
+    for channel in pixel.0.iter_mut().take(3) {
+        *channel = (f32::from(*channel) * keep) as u8;
+    }
+}
+
 fn pixel_mut(canvas: &mut RgbaImage, x: i32, y: i32) -> Option<&mut Rgba<u8>> {
     if x < 0 || y < 0 || x >= canvas.width() as i32 || y >= canvas.height() as i32 {
         return None;
@@ -1549,6 +1720,14 @@ mod tests {
             let deep = mk(SceneKind::DeepField);
             assert!(deep.galaxies.len() >= 35, "deep-field (seed {seed})");
             assert!(mk(SceneKind::Veil).veil.is_some(), "veil (seed {seed})");
+            assert!(
+                mk(SceneKind::EdgeOn).edge_on.is_some(),
+                "edge-on (seed {seed})"
+            );
+            assert!(
+                mk(SceneKind::Lensing).lensing.is_some(),
+                "lensing (seed {seed})"
+            );
         }
     }
 
