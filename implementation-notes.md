@@ -289,3 +289,20 @@ last reference batch of James Webb frames:
 
 The reachability test now also asserts both spike styles occur and at least one
 JWST-palette hero appears across 400 seeds.
+
+## Telescope cameo pass (2026-07-18)
+
+Four more instrument looks joined the pool alongside Hubble/JWST:
+
+- ALMA protoplanetary disc (HL Tau): tilted copper disc with dark concentric
+  gap rings and a hot core, in the focal-object slot with the ring nebula and
+  butterfly.
+- SDO extreme-UV sun: 40% of suns render as a hard-limbed granulated gold
+  disc with limb brightening, a short corona, and 2-4 coronal loop arcs,
+  instead of the smooth glow.
+- Chandra remnant (Cas A): new scene kind - a fragmented shell of teal/gold/
+  red shards with a faint blue synchrotron haze inside.
+- Planck CMB easter egg: ~1 in 24 seeds render the pure blue-to-orange
+  temperature mottle with nothing else drawn.
+
+The reachability test asserts all four appear across 400 seeds.

@@ -3,9 +3,12 @@
 //! ionization cores with embedded star clusters, star-forming knots, galaxy
 //! smudges, occasional suns, and rare ultra-deep-field seeds. Roughly half of
 //! seeds take the JWST look: 6-point snowflake diffraction spikes, clumpy
-//! globular dust, and an inverted red-arm/blue-core hero galaxy. Everything
-//! derives from the style seed so `--style-seed` reproduces the exact scene,
-//! and the whole canvas is opaque like the gradient backdrop.
+//! globular dust, and an inverted red-arm/blue-core hero galaxy. Other
+//! instrument cameos: ALMA protoplanetary discs, SDO extreme-UV suns with
+//! coronal loops, Chandra-style fragmented remnant shells, and a rare
+//! all-CMB Planck frame. Everything derives from the style seed so
+//! `--style-seed` reproduces the exact scene, and the whole canvas is opaque
+//! like the gradient backdrop.
 //!
 //! All drawing is hand-rolled on `image` + `rand` (no new dependencies, per
 //! repo policy). Focal features anchor to corners and edges because the
@@ -48,11 +51,107 @@ pub fn render(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
     if let Some((x, y, radius, angle)) = scene.butterfly {
         draw_butterfly(&mut canvas, x, y, radius, angle, scene.noise_seed);
     }
+    if let Some((x, y, radius, angle, flatten)) = scene.alma {
+        draw_alma_disc(&mut canvas, x, y, radius, angle, flatten);
+    }
+    if let Some((x, y, radius)) = scene.remnant {
+        draw_remnant(&mut canvas, x, y, radius, scene.noise_seed);
+    }
     draw_stars(&mut canvas, &scene.stars, scene.jwst);
     if let Some(sun) = &scene.sun {
-        draw_sun(&mut canvas, sun);
+        draw_sun(&mut canvas, sun, scene.noise_seed);
     }
     canvas
+}
+
+/// ALMA protoplanetary disc, HL Tau style: a tilted copper-orange disc with
+/// dark concentric gap rings carved by forming planets, and a hot center.
+fn draw_alma_disc(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32, angle: f32, flatten: f32) {
+    let reach = (radius * 1.2).ceil() as i32;
+    let (sin, cos) = angle.sin_cos();
+    // Gap radii as fractions of the disc, per the HL Tau rings.
+    const GAPS: [f32; 4] = [0.3, 0.5, 0.72, 0.9];
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let major = dx as f32 * cos + dy as f32 * sin;
+            let minor = (-(dx as f32) * sin + dy as f32 * cos) / flatten;
+            let distance = (major * major + minor * minor).sqrt() / radius;
+            if distance > 1.1 {
+                continue;
+            }
+            let px = x as i32 + dx;
+            let py = y as i32 + dy;
+            // Copper disc, brighter and warmer toward the center.
+            let disc = (-(distance * 1.6).powi(2)).exp();
+            let tint = mix3(
+                [255.0, 208.0, 150.0],
+                [190.0, 84.0, 36.0],
+                smoothstep(distance),
+            );
+            // Dark gap rings.
+            let mut gaps = 1.0f32;
+            for gap in GAPS {
+                gaps *= 1.0 - 0.72 * (-((distance - gap) / 0.035).powi(2)).exp();
+            }
+            add_light(canvas, px, py, tint, disc * gaps * 0.85);
+            // Hot core.
+            let core = (-(distance * 7.0).powi(2)).exp();
+            add_light(canvas, px, py, [255.0, 240.0, 214.0], core * 0.9);
+        }
+    }
+}
+
+/// Chandra-style young supernova remnant: a rough shell of fragmented
+/// multicolor shards (teal, red, gold) with a faint blue synchrotron haze
+/// inside, like Cassiopeia A.
+fn draw_remnant(canvas: &mut RgbaImage, x: f32, y: f32, radius: f32, seed: u64) {
+    let reach = (radius * 1.4).ceil() as i32;
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let fdx = dx as f32;
+            let fdy = dy as f32;
+            let distance = (fdx * fdx + fdy * fdy).sqrt() / radius;
+            if distance > 1.35 {
+                continue;
+            }
+            let px = x as i32 + dx;
+            let py = y as i32 + dy;
+            // Faint blue haze filling the shell interior.
+            if distance < 0.9 {
+                let haze = (1.0 - distance / 0.9) * 0.2;
+                add_light(canvas, px, py, [96.0, 140.0, 224.0], haze);
+            }
+            // The shell band, broken into shards by hard-thresholded noise.
+            let shell = (-((distance - 1.0) / 0.19).powi(2)).exp();
+            if shell < 0.03 {
+                continue;
+            }
+            let frag = fbm(
+                fdx / radius * 3.4 + 7.7,
+                fdy / radius * 3.4 + 2.2,
+                seed ^ 0xCA5A,
+                4,
+            );
+            let shard = ((frag - 0.42) / 0.2).clamp(0.0, 1.0);
+            if shard <= 0.0 {
+                continue;
+            }
+            // Shard color: teal -> gold -> red picked by a second field.
+            let hue = fbm(
+                fdx / radius * 2.0 + 31.0,
+                fdy / radius * 2.0 + 17.0,
+                seed ^ 0x0DDC,
+                3,
+            );
+            let warm = mix3(
+                [244.0, 196.0, 96.0],
+                [232.0, 84.0, 60.0],
+                smoothstep((hue - 0.55) / 0.25),
+            );
+            let tint = mix3([84.0, 212.0, 200.0], warm, smoothstep((hue - 0.3) / 0.3));
+            add_light(canvas, px, py, tint, shell * shard * 1.1);
+        }
+    }
 }
 
 /// Ring-Nebula-style planetary nebula: blue interior haze, teal-white middle
@@ -191,6 +290,12 @@ struct Scene {
     butterfly: Option<(f32, f32, f32, f32)>,
     /// Veil-remnant ribbon: (axis angle, fractional offset from center).
     veil: Option<(f32, f32)>,
+    /// ALMA protoplanetary disc, HL Tau style: (x, y, radius, angle, flatten).
+    alma: Option<(f32, f32, f32, f32, f32)>,
+    /// Chandra-style young supernova remnant shell: (x, y, radius).
+    remnant: Option<(f32, f32, f32)>,
+    /// Planck easter egg: the whole frame is CMB mottle, nothing else drawn.
+    cmb: bool,
 }
 
 struct Star {
@@ -219,6 +324,9 @@ struct Sun {
     y: f32,
     radius: f32,
     color: [f32; 3],
+    /// SDO extreme-UV look: textured granulation disc with coronal loops
+    /// instead of a smooth glow.
+    sdo: bool,
 }
 
 /// A large foreground spiral, Whirlpool/M106 style: log-spiral blue arms laced
@@ -240,13 +348,18 @@ struct HeroGalaxy {
 impl Scene {
     fn generate(rng: &mut StdRng, width: u32, height: u32) -> Self {
         let min_side = width.min(height) as f32;
+        // Planck easter egg: rare all-CMB frame, rolled before everything so
+        // it stays independent of the kind table.
+        let cmb = rng.random_range(0..24u32) == 0;
         // Scene kinds: mostly nebula; sometimes an ultra-deep-field (black sky
-        // packed with tiny galaxies) or a bare open-cluster starfield.
-        let kind_roll = rng.random_range(0..10u32);
+        // packed with tiny galaxies), a bare open-cluster starfield, a veil
+        // ribbon, or a Chandra-style fragmented remnant shell.
+        let kind_roll = rng.random_range(0..12u32);
         let deep_field = kind_roll == 0;
         let cluster_field = kind_roll == 1;
         // Veil-style supernova remnant: braided rainbow filaments over black.
         let veil = kind_roll == 2;
+        let remnant_kind = kind_roll == 3;
         // JWST look: 6-point snowflake diffraction spikes, clumpy globular
         // dust, and (for a hero spiral) an inverted red-arm/blue-core palette.
         let jwst = rng.random_bool(0.45);
@@ -256,7 +369,7 @@ impl Scene {
         } else {
             generate_galaxies(rng, width, height)
         };
-        let sun = if deep_field || cluster_field || veil {
+        let sun = if deep_field || cluster_field || veil || remnant_kind {
             None
         } else {
             generate_sun(rng, width, height)
@@ -274,18 +387,19 @@ impl Scene {
         // Bright ionization core, Orion/Westerlund style: a hot white-pink
         // heart in the nebula with a young star cluster embedded in it. Kept
         // near an edge so the capture window doesn't cover it.
-        let core = if !deep_field && !cluster_field && !veil && rng.random_bool(0.65) {
-            let (cx, cy) = corner_anchor(rng, width, height, 0.08);
-            Some((cx, cy, rng.random_range(0.5..=1.0)))
-        } else {
-            None
-        };
+        let core =
+            if !deep_field && !cluster_field && !veil && !remnant_kind && rng.random_bool(0.65) {
+                let (cx, cy) = corner_anchor(rng, width, height, 0.08);
+                Some((cx, cy, rng.random_range(0.5..=1.0)))
+            } else {
+                None
+            };
         if let Some((cx, cy, strength)) = core {
             stars.extend(generate_cluster(rng, cx, cy, min_side, strength));
         }
         // Star-forming knots: small saturated pink clumps scattered through
         // the gas, like the Antennae's star-birth regions.
-        let knots = if deep_field || cluster_field || veil {
+        let knots = if deep_field || cluster_field || veil || remnant_kind {
             Vec::new()
         } else {
             (0..rng.random_range(2..=6))
@@ -298,60 +412,89 @@ impl Scene {
                 })
                 .collect()
         };
-        let nebula_strength = if deep_field || cluster_field || veil {
+        let nebula_strength = if deep_field || cluster_field || veil || remnant_kind {
             rng.random_range(0.05..=0.16)
         } else {
             rng.random_range(0.75..=1.0)
         };
         // Foreground hero spiral, corner-anchored so the window doesn't
         // swallow it.
-        let hero = if !deep_field && !cluster_field && !veil && rng.random_bool(0.3) {
-            let (hx, hy) = corner_anchor(rng, width, height, 0.1);
-            Some(HeroGalaxy {
-                x: hx,
-                y: hy,
-                radius: min_side * rng.random_range(0.16..=0.3),
-                angle: rng.random_range(0.0..std::f32::consts::PI),
-                flatten: rng.random_range(0.3..=0.75),
-                twist: rng.random_range(1.8..=3.2) * if rng.random_bool(0.5) { 1.0 } else { -1.0 },
-                jwst,
-                seed: rng.random(),
-            })
-        } else {
-            None
-        };
+        let hero =
+            if !deep_field && !cluster_field && !veil && !remnant_kind && rng.random_bool(0.3) {
+                let (hx, hy) = corner_anchor(rng, width, height, 0.1);
+                Some(HeroGalaxy {
+                    x: hx,
+                    y: hy,
+                    radius: min_side * rng.random_range(0.16..=0.3),
+                    angle: rng.random_range(0.0..std::f32::consts::PI),
+                    flatten: rng.random_range(0.3..=0.75),
+                    twist: rng.random_range(1.8..=3.2)
+                        * if rng.random_bool(0.5) { 1.0 } else { -1.0 },
+                    jwst,
+                    seed: rng.random(),
+                })
+            } else {
+                None
+            };
         let shell_spacing = if core.is_some() && rng.random_bool(0.5) {
             Some(min_side * rng.random_range(0.05..=0.1))
         } else {
             None
         };
-        // Planetary nebula slot: either an M57 donut (blue heart, teal-white
-        // middle, wobbling orange rim) or a Twin-Jet bipolar butterfly.
+        // Focal-object slot: an M57 donut, a Twin-Jet bipolar butterfly, or an
+        // ALMA-style protoplanetary disc.
         let mut ring_nebula = None;
         let mut butterfly = None;
-        if !deep_field && !cluster_field && !veil && hero.is_none() && rng.random_bool(0.2) {
+        let mut alma = None;
+        if !deep_field
+            && !cluster_field
+            && !veil
+            && !remnant_kind
+            && hero.is_none()
+            && rng.random_bool(0.25)
+        {
             let (rx, ry) = corner_anchor(rng, width, height, 0.1);
-            if rng.random_bool(0.5) {
-                ring_nebula = Some((rx, ry, min_side * rng.random_range(0.06..=0.12)));
-            } else {
-                butterfly = Some((
-                    rx,
-                    ry,
-                    min_side * rng.random_range(0.1..=0.17),
-                    rng.random_range(0.0..std::f32::consts::PI),
-                ));
-                // The hot central star that lights the lobes.
-                stars.push(Star {
-                    x: rx,
-                    y: ry,
-                    radius: 2.4,
-                    brightness: 1.0,
-                    color: [244.0, 250.0, 255.0],
-                    spike: 12.0,
-                });
+            match rng.random_range(0..3u32) {
+                0 => {
+                    ring_nebula = Some((rx, ry, min_side * rng.random_range(0.06..=0.12)));
+                }
+                1 => {
+                    butterfly = Some((
+                        rx,
+                        ry,
+                        min_side * rng.random_range(0.1..=0.17),
+                        rng.random_range(0.0..std::f32::consts::PI),
+                    ));
+                    // The hot central star that lights the lobes.
+                    stars.push(Star {
+                        x: rx,
+                        y: ry,
+                        radius: 2.4,
+                        brightness: 1.0,
+                        color: [244.0, 250.0, 255.0],
+                        spike: 12.0,
+                    });
+                }
+                _ => {
+                    alma = Some((
+                        rx,
+                        ry,
+                        min_side * rng.random_range(0.08..=0.14),
+                        rng.random_range(0.0..std::f32::consts::PI),
+                        rng.random_range(0.3..=0.6),
+                    ));
+                }
             }
         }
-        Scene {
+        // Chandra remnant shell: large, arcing through the frame from a
+        // corner anchor.
+        let remnant = if remnant_kind {
+            let (rx, ry) = corner_anchor(rng, width, height, 0.05);
+            Some((rx, ry, min_side * rng.random_range(0.3..=0.5)))
+        } else {
+            None
+        };
+        let mut scene = Scene {
             noise_seed: rng.random(),
             nebula_offset: (rng.random_range(0.0..64.0), rng.random_range(0.0..64.0)),
             nebula_scale: rng.random_range(2.4..=4.6),
@@ -373,7 +516,26 @@ impl Scene {
             } else {
                 None
             },
+            alma,
+            remnant,
+            cmb,
+        };
+        // A CMB frame is just the mottle: no stars, no objects.
+        if cmb {
+            scene.stars.clear();
+            scene.galaxies.clear();
+            scene.knots.clear();
+            scene.core = None;
+            scene.shell_spacing = None;
+            scene.hero = None;
+            scene.sun = None;
+            scene.ring_nebula = None;
+            scene.butterfly = None;
+            scene.veil = None;
+            scene.alma = None;
+            scene.remnant = None;
         }
+        scene
     }
 }
 
@@ -540,6 +702,7 @@ fn generate_sun(rng: &mut StdRng, width: u32, height: u32) -> Option<Sun> {
         } else {
             [255.0, 176.0, 120.0] // red giant warmth
         },
+        sdo: rng.random_bool(0.4),
     })
 }
 
@@ -565,6 +728,9 @@ fn corner_anchor(rng: &mut StdRng, width: u32, height: u32, inset: f32) -> (f32,
 /// dark dust lanes, and film grain. One pixel at a time like the gradient
 /// backdrop, so the two paths share their cost profile.
 fn base_layer(width: u32, height: u32, style: &PresentationStyle, scene: &Scene) -> RgbaImage {
+    if scene.cmb {
+        return cmb_layer(width, height, scene);
+    }
     let stops = style.stops.map(to_f32);
     let glow_a = to_f32(style.glow_a);
     let glow_b = to_f32(style.glow_b);
@@ -726,6 +892,43 @@ const JWST_SPIKE_DIRS: [(f32, f32); 6] = [
     (-0.866_025_4, 0.5),
 ];
 
+/// Planck easter egg: the whole frame is cosmic-microwave-background mottle,
+/// the blue-to-orange temperature anisotropy map with nothing else on it.
+fn cmb_layer(width: u32, height: u32, scene: &Scene) -> RgbaImage {
+    let aspect = height as f32 / width.max(1) as f32;
+    ImageBuffer::from_fn(width, height, |x, y| {
+        let fx = x as f32 / width.max(1) as f32;
+        let fy = y as f32 / height.max(1) as f32;
+        let t = fbm(
+            fx * 9.0 + scene.nebula_offset.0,
+            fy * 9.0 * aspect + scene.nebula_offset.1,
+            scene.noise_seed,
+            5,
+        );
+        // Diverging temperature palette: cold blue through pale to hot orange.
+        let color = if t < 0.5 {
+            mix3(
+                [36.0, 60.0, 150.0],
+                [226.0, 216.0, 196.0],
+                smoothstep(t * 2.0),
+            )
+        } else {
+            mix3(
+                [226.0, 216.0, 196.0],
+                [236.0, 116.0, 32.0],
+                smoothstep((t - 0.5) * 2.0),
+            )
+        };
+        let grain = grain_noise(x, y, scene.noise_seed) * GRAIN_STRENGTH;
+        Rgba([
+            quantize(color[0] + grain),
+            quantize(color[1] + grain),
+            quantize(color[2] + grain),
+            255,
+        ])
+    })
+}
+
 fn draw_stars(canvas: &mut RgbaImage, stars: &[Star], jwst: bool) {
     for star in stars {
         let reach = (star.radius * 3.0).max(star.spike).ceil() as i32;
@@ -873,7 +1076,11 @@ fn draw_galaxy(canvas: &mut RgbaImage, galaxy: &Galaxy) {
     }
 }
 
-fn draw_sun(canvas: &mut RgbaImage, sun: &Sun) {
+fn draw_sun(canvas: &mut RgbaImage, sun: &Sun, seed: u64) {
+    if sun.sdo {
+        draw_sdo_sun(canvas, sun, seed);
+        return;
+    }
     let reach = (sun.radius * 2.2).ceil() as i32;
     for dy in -reach..=reach {
         for dx in -reach..=reach {
@@ -888,6 +1095,74 @@ fn draw_sun(canvas: &mut RgbaImage, sun: &Sun) {
             let py = sun.y as i32 + dy;
             add_light(canvas, px, py, [255.0, 255.0, 248.0], core);
             add_light(canvas, px, py, sun.color, corona);
+        }
+    }
+}
+
+/// SDO extreme-UV sun: a hard-limbed gold disc textured with granulation
+/// noise, a bright limb, a short corona, and a few coronal loop arcs rising
+/// off the edge.
+fn draw_sdo_sun(canvas: &mut RgbaImage, sun: &Sun, seed: u64) {
+    // The glow radius stays sun.radius; the visible disc is a fraction of it.
+    let disc_radius = sun.radius * 0.55;
+    let reach = (sun.radius * 1.4).ceil() as i32;
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let fdx = dx as f32;
+            let fdy = dy as f32;
+            let distance = (fdx * fdx + fdy * fdy).sqrt() / disc_radius;
+            if distance > 2.5 {
+                continue;
+            }
+            let px = sun.x as i32 + dx;
+            let py = sun.y as i32 + dy;
+            if distance <= 1.0 {
+                // Granulated EUV surface: gold base churned by noise.
+                let churn = fbm(
+                    fdx / disc_radius * 5.0 + 3.1,
+                    fdy / disc_radius * 5.0 + 6.4,
+                    seed ^ 0x50D0,
+                    4,
+                );
+                let surface = mix3([214.0, 120.0, 30.0], [255.0, 214.0, 110.0], churn);
+                // Limb brightening: EUV suns glow hardest at the edge.
+                let limb = 1.0 + 0.5 * (-((distance - 1.0) / 0.08).powi(2)).exp();
+                add_light(canvas, px, py, surface, (0.75 + 0.25 * churn) * limb);
+            } else {
+                // Short corona falloff past the limb.
+                let corona = (-((distance - 1.0) * 2.4).powi(2)).exp() * 0.4;
+                add_light(canvas, px, py, [255.0, 190.0, 90.0], corona);
+            }
+        }
+    }
+    // Coronal loops: thin arcs anchored on the limb, drawn as partial ring
+    // bands of small circles whose centers sit on the disc edge.
+    let mut rng = StdRng::seed_from_u64(seed ^ 0x100C);
+    for _ in 0..rng.random_range(2..=4) {
+        let anchor = rng.random_range(0.0..std::f32::consts::TAU);
+        let loop_radius = disc_radius * rng.random_range(0.18..=0.4);
+        let cx = sun.x + anchor.cos() * disc_radius;
+        let cy = sun.y + anchor.sin() * disc_radius;
+        let reach = (loop_radius * 1.3).ceil() as i32;
+        for dy in -reach..=reach {
+            for dx in -reach..=reach {
+                let fdx = dx as f32;
+                let fdy = dy as f32;
+                let ring = ((fdx * fdx + fdy * fdy).sqrt() - loop_radius).abs();
+                if ring > 1.6 {
+                    continue;
+                }
+                let px = (cx as i32) + dx;
+                let py = (cy as i32) + dy;
+                // Only the part of the loop outside the disc reads as an arc.
+                let gx = cx + fdx - sun.x;
+                let gy = cy + fdy - sun.y;
+                if gx * gx + gy * gy < disc_radius * disc_radius {
+                    continue;
+                }
+                let band = (1.0 - ring / 1.6).clamp(0.0, 1.0);
+                add_light(canvas, px, py, [255.0, 216.0, 130.0], band * 0.5);
+            }
         }
     }
 }
@@ -1079,6 +1354,10 @@ mod tests {
         let mut suns = 0;
         let mut jwst = 0;
         let mut jwst_heroes = 0;
+        let mut almas = 0;
+        let mut remnants = 0;
+        let mut cmbs = 0;
+        let mut sdo_suns = 0;
         for seed in 0..400u64 {
             let mut rng = StdRng::seed_from_u64(seed ^ SCENE_SEED_SALT);
             let scene = Scene::generate(&mut rng, 1600, 1200);
@@ -1090,6 +1369,10 @@ mod tests {
             suns += usize::from(scene.sun.is_some());
             jwst += usize::from(scene.jwst);
             jwst_heroes += usize::from(scene.hero.as_ref().is_some_and(|h| h.jwst));
+            almas += usize::from(scene.alma.is_some());
+            remnants += usize::from(scene.remnant.is_some());
+            cmbs += usize::from(scene.cmb);
+            sdo_suns += usize::from(scene.sun.as_ref().is_some_and(|s| s.sdo));
         }
         assert!(deep_fields > 0, "no deep-field seeds in 0..400");
         assert!(heroes > 0, "no hero-galaxy seeds in 0..400");
@@ -1103,6 +1386,10 @@ mod tests {
             "JWST look never/always fires: {jwst}"
         );
         assert!(jwst_heroes > 0, "no JWST-palette hero galaxy in 0..400");
+        assert!(almas > 0, "no ALMA-disc seeds in 0..400");
+        assert!(remnants > 0, "no Chandra-remnant seeds in 0..400");
+        assert!(cmbs > 0, "no CMB seeds in 0..400");
+        assert!(sdo_suns > 0, "no SDO-sun seeds in 0..400");
     }
 
     #[test]
