@@ -411,3 +411,11 @@ palette is a no-op warning, since gradients have no scene.
   elliptical lens galaxy ringed by 3-5 thin blue arcs bowed at 1.6-2.6x its
   radius. Pin: `lensing` (forces a deep field with the lens).
 - `SceneKind` grew to 16 names; the pinned-scene test covers both new looks.
+
+## Tighter card padding (2026-07-18)
+
+Dropped the randomized card padding from 100..=132 to 58..=78 (reference-size
+px, scaled at render). The space backdrop was reading as the focal point; the
+screenshot should be. At the default ~900px window this shrank the border from
+~103px to ~59px per side, so the window fills more of the card while a thin
+space frame and the drop shadow still read. Applies to gradient cards too.
