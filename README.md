@@ -57,18 +57,14 @@ Style an existing screenshot into a presentation card without recapturing:
 cloche polish /tmp/diff.png --palette violet-haze --format json
 ```
 
-Space palettes (`orion-emission`, `carina-hubble`, and the rest) render a
-procedural deep-space scene behind the card. Pin a specific look with
-`--scene` instead of letting the seed pick:
+By default the card sits on a procedural deep-space scene. Pick one instead of
+letting the seed choose:
 
 ```bash
 cloche polish /tmp/diff.png --scene jwst --style-seed 12345
 ```
 
-Scenes: `nebula`, `jwst`, `hubble`, `galaxy`, `alma`, `ring`, `butterfly`,
-`sun`, `sdo`, `cluster`, `deep-field`, `veil`, `remnant`, `cmb`. `--scene`
-only applies to space palettes; the same `--style-seed` reproduces a pinned
-scene exactly.
+See [Space backdrops](#space-backdrops) for the full list of looks.
 
 Render an existing short recording through the experimental Remotion reel engine:
 
@@ -112,6 +108,44 @@ Generate a Codex `turn/start` payload from a Shot:
 ```bash
 cloche codex-payload --thread-id "$THREAD_ID" /tmp/cloche-shot-123
 ```
+
+## Space backdrops
+
+Every card is framed on a procedural deep-space scene generated from the style
+seed. Nothing is a stock image: the nebulae, starfields, and objects are drawn
+from noise at render time, so each seed is a different sky and the same
+`--style-seed` reproduces one exactly.
+
+Eight palettes are color-sampled from astrophotography of real objects, and a
+scene layers gas, dust lanes, starfields, and one or more focal objects on top:
+
+- **Nebulae:** domain-warped clouds with bright ionization fronts and dark
+  dust lanes. Palettes: `orion-emission`, `carina-hubble`, `pleiades-reflection`,
+  `rho-ophiuchi`, `milkyway-core`, `andromeda-haze`, `horsehead-flame`,
+  `lagoon-trifid`.
+- **Telescope looks:** roughly half of scenes take the JWST signature (6-point
+  diffraction spikes, clumpy dust, blue-cored galaxies). Others echo ALMA
+  protoplanetary discs, SDO extreme-UV suns with coronal loops, and Chandra
+  supernova-remnant shells.
+- **Objects:** spiral and edge-on dust-lane galaxies, ring and bipolar
+  planetary nebulae, open clusters, gravitational-lensing arcs, and rare
+  ultra-deep-field and Planck-CMB frames.
+
+Random styling picks a space palette. The five original gradient palettes
+(`violet-haze`, `ember-glow`, `aurora-teal`, `rose-noir`, `midnight-sky`) are
+still available by name with `--palette`.
+
+Pin a look with `--scene` instead of rolling the seed:
+
+```bash
+cloche polish shot.png --scene alma
+cloche polish shot.png --scene cmb --style-seed 42
+```
+
+Scenes: `nebula`, `jwst`, `hubble`, `galaxy`, `alma`, `ring`, `butterfly`,
+`edge-on`, `sun`, `sdo`, `cluster`, `deep-field`, `lensing`, `veil`, `remnant`,
+`cmb`. `--scene` applies only to space palettes. On a gradient palette it is a
+no-op warning. The same flag is available on the MCP `polish` tool.
 
 ## Command Reference
 
