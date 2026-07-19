@@ -236,7 +236,7 @@ pub fn style_from_seed(seed: u64) -> PresentationStyle {
         stops: palette.stops,
         glow_a: palette.glow_a,
         glow_b: palette.glow_b,
-        padding: rng.random_range(100..=132),
+        padding: rng.random_range(58..=78),
         corner_radius: rng.random_range(18..=26),
         shadow_blur: rng.random_range(22.0..=34.0),
         shadow_offset_y: rng.random_range(16..=26),
