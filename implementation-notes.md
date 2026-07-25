@@ -441,6 +441,17 @@ same-second captures; the counter covers repeated in-process calls and keeps
 the uniqueness regression test deterministic. Millis alone was rejected
 because sub-ms loops can still collide.
 
+## Nested flat capture discovery (2026-07-25)
+
+`find_captures` only inspected direct root entries and treated matching
+directories as legacy (`metadata.json` only), so flat `<stem>.json` files
+inside a per-shot or custom out-dir were invisible to gallery/latest/preview.
+Now: matching `cloche-shot*` / `appshot*` dirs collect legacy + flat sidecars;
+other immediate subdirs are scanned one level for flat sidecars only (so
+`/tmp/cloche-demo` works without treating every nested `metadata.json` as a
+shot). Sidecar paths are canonicalized into a seen-set so overlapping
+`--root` values (parent + child) do not double-count. No deep recursion.
+
 ## Codex payload flat out-dirs (2026-07-25)
 
 `codex-payload` directory input only joined `metadata.json`, so the default
