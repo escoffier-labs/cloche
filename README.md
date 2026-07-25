@@ -48,7 +48,8 @@ cargo install --git https://github.com/escoffier-labs/cloche
 Capture the active app or window as a Shot:
 
 ```bash
-cloche capture --target active --out-dir /tmp/cloche-shot-$(date +%s) --format json
+OUT=/tmp/cloche-demo
+cloche capture --target active --out-dir "$OUT" --format json
 ```
 
 Style an existing screenshot into a presentation card without recapturing:
@@ -103,10 +104,11 @@ Create a self-contained HTML gallery of recent Shots:
 cloche gallery --root /tmp --html /tmp/cloche.html --title "My Shots" --open
 ```
 
-Generate a Codex `turn/start` payload from a Shot:
+Generate a Codex `turn/start` payload from a Shot (pass the out-dir, or a
+`<stem>.json` sidecar):
 
 ```bash
-cloche codex-payload --thread-id "$THREAD_ID" /tmp/cloche-shot-123
+cloche codex-payload --thread-id "$THREAD_ID" "$OUT"
 ```
 
 ## Space backdrops
@@ -273,15 +275,17 @@ pass (it must end in `.png`). Its stdout JSON reports `input`, `card`, and
 Any shell-capable agent can call:
 
 ```bash
-cloche capture --target active --out-dir /tmp/cloche-shot-$(date +%s) --format json
+OUT=/tmp/cloche-demo
+cloche capture --target active --out-dir "$OUT" --format json
 ```
 
-Then parse `image.path` from stdout or read the generated `metadata.json`.
+Then parse `image.path` from stdout or read the generated `<stem>.json` sidecar
+in `$OUT`.
 
 Codex app-server clients can turn a capture into a ready `turn/start` payload:
 
 ```bash
-cloche codex-payload --thread-id "$THREAD_ID" /tmp/cloche-shot-123
+cloche codex-payload --thread-id "$THREAD_ID" "$OUT"
 ```
 
 Other agents should treat Cloche as a normal subprocess tool. The core command has no MCP dependency, desktop-app dependency, or agent-specific runtime dependency.
