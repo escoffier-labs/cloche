@@ -462,6 +462,13 @@ Resolution lives in `captures::resolve_metadata_path`: rank legacy
 shadow a newer flat capture. Picked newest over hard errors on ambiguity so a
 re-used demo out-dir keeps working.
 
+## Codex payload card opt-in (#21) (2026-07-25)
+
+`codex-payload` kept attaching `metadata.image` (raw) while Agent Use pointed
+at `image.path` without saying so. Default stays raw so existing automation is
+unchanged; `--card` selects `presentationImage` and errors clearly when the
+capture has no card. Documented both paths in README Agent Use.
+
 ## Window match + preview path tests (#25) (2026-07-25)
 
 Extracted pure `parse_wmctrl_output` / `find_window_among` / `window_matches`

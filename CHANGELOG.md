@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `cloche codex-payload --card` attaches the polished presentation image instead
+  of the default raw capture frame.
+
 ### Changed
 - Relicensed from Apache-2.0 to MIT. `LICENSE`, `Cargo.toml`, `CONTRIBUTING.md`,
   and the README badge now agree on MIT.
@@ -17,6 +21,8 @@ All notable changes to this project are documented here. The format follows
   `--window-id`, `--app`, and reels render flags; Linux notes that
   `list-windows` hard-fails without `wmctrl`; `--clipboard` notes the Windows
   gap. CHANGELOG compare links catch up through 0.7.0.
+- Agent Use documents that `codex-payload` defaults to the raw frame and that
+  `image.path` is not the polished card.
 
 
 ## [0.7.0] - 2026-07-18

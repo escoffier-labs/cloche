@@ -174,6 +174,7 @@ cloche open /tmp/cloche-demo
 cloche schema
 cloche schema --for polish
 cloche codex-payload --thread-id THREAD_ID /tmp/cloche-demo
+cloche codex-payload --thread-id THREAD_ID --card /tmp/cloche-demo
 cloche mcp
 cloche setup
 cloche setup --print
@@ -293,12 +294,16 @@ cloche capture --target active --out-dir "$OUT" --format json
 ```
 
 Then parse `image.path` from stdout or read the generated `<stem>.json` sidecar
-in `$OUT`.
+in `$OUT`. `image.path` is the raw frame (`<stem>.raw.png` when a card was
+written); the polished card lives at `presentationImage.path`.
 
-Codex app-server clients can turn a capture into a ready `turn/start` payload:
+Codex app-server clients can turn a capture into a ready `turn/start` payload.
+By default `codex-payload` attaches that raw frame (the unstyled pixels). Pass
+`--card` to attach the polished presentation image instead:
 
 ```bash
 cloche codex-payload --thread-id "$THREAD_ID" "$OUT"
+cloche codex-payload --thread-id "$THREAD_ID" --card "$OUT"
 ```
 
 Other agents should treat Cloche as a normal subprocess tool. The core command has no MCP dependency, desktop-app dependency, or agent-specific runtime dependency.
