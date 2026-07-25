@@ -512,30 +512,52 @@ fn active_x11_window() -> Result<WindowInfo, AppError> {
 
 #[cfg(not(target_os = "windows"))]
 fn find_window(title: Option<&str>, app: Option<&str>) -> Result<WindowInfo, AppError> {
-    let windows = parse_wmctrl_windows()?;
+    find_window_among(parse_wmctrl_windows()?, title, app)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn find_window_among(
+    windows: impl IntoIterator<Item = WindowInfo>,
+    title: Option<&str>,
+    app: Option<&str>,
+) -> Result<WindowInfo, AppError> {
     windows
         .into_iter()
-        .find(|window| {
-            let title_matches = title.is_none_or(|needle| {
-                window
-                    .title
-                    .as_deref()
-                    .is_some_and(|value| value.to_lowercase().contains(&needle.to_lowercase()))
-            });
-            let app_matches = app.is_none_or(|needle| {
-                window
-                    .app_name
-                    .as_deref()
-                    .is_some_and(|value| value.to_lowercase().contains(&needle.to_lowercase()))
-            });
-            title_matches && app_matches
-        })
+        .find(|window| window_matches(window, title, app))
         .ok_or_else(|| AppError::Message("no matching window found".to_string()))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn window_matches(window: &WindowInfo, title: Option<&str>, app: Option<&str>) -> bool {
+    let title_matches = title.is_none_or(|needle| {
+        window
+            .title
+            .as_deref()
+            .is_some_and(|value| value.to_lowercase().contains(&needle.to_lowercase()))
+    });
+    let app_matches = app.is_none_or(|needle| {
+        window
+            .app_name
+            .as_deref()
+            .is_some_and(|value| value.to_lowercase().contains(&needle.to_lowercase()))
+    });
+    title_matches && app_matches
 }
 
 #[cfg(not(target_os = "windows"))]
 fn parse_wmctrl_windows() -> Result<Vec<WindowInfo>, AppError> {
     let output = util::run_output("wmctrl", &["-lp"])?;
+    let mut windows = parse_wmctrl_output(&output);
+    for window in &mut windows {
+        window.app_name = window.pid.and_then(util::proc_comm);
+    }
+    Ok(windows)
+}
+
+/// Parse `wmctrl -lp` lines into window rows. Leaves `app_name` unset; the
+/// live path fills it from `/proc/<pid>/comm`.
+#[cfg(not(target_os = "windows"))]
+fn parse_wmctrl_output(output: &str) -> Vec<WindowInfo> {
     let mut windows = Vec::new();
     for line in output.lines() {
         let mut parts = line.split_whitespace();
@@ -544,16 +566,15 @@ fn parse_wmctrl_windows() -> Result<Vec<WindowInfo>, AppError> {
         let pid = parts.next().and_then(|value| value.parse::<u32>().ok());
         let _host = parts.next();
         let title = parts.collect::<Vec<_>>().join(" ");
-        let app_name = pid.and_then(util::proc_comm);
         windows.push(WindowInfo {
             id,
             title: (!title.is_empty()).then_some(title),
-            app_name,
+            app_name: None,
             pid,
             geometry: None,
         });
     }
-    Ok(windows)
+    windows
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -671,12 +692,15 @@ mod tests {
     use super::ActiveCaptureTools;
     use super::ActiveX11Step;
     use super::FrameExtents;
+    use super::find_window_among;
     use super::linux_doctor_report;
     use super::next_active_x11_steps;
     use super::parse_frame_extents;
+    use super::parse_wmctrl_output;
     use super::parse_xdotool_geometry;
     use super::x11_active_capture_ready;
     use crate::contract::Geometry;
+    use crate::contract::WindowInfo;
     use std::collections::HashSet;
 
     #[test]
@@ -786,5 +810,64 @@ mod tests {
                 "doctor claims helper with no reachable capture path: {tool}"
             );
         }
+    }
+
+    fn sample_windows() -> Vec<WindowInfo> {
+        vec![
+            WindowInfo {
+                id: Some("0x03400003".to_string()),
+                title: Some("Firefox — Inbox".to_string()),
+                app_name: Some("firefox".to_string()),
+                pid: Some(1234),
+                geometry: None,
+            },
+            WindowInfo {
+                id: Some("0x05200007".to_string()),
+                title: Some("Terminal".to_string()),
+                app_name: Some("gnome-terminal-server".to_string()),
+                pid: Some(5678),
+                geometry: None,
+            },
+        ]
+    }
+
+    #[test]
+    fn parse_wmctrl_output_reads_id_pid_and_title() {
+        let output = "\
+0x03400003  0 1234 hostname Firefox — Inbox\n\
+0x05200007  0 5678 hostname Terminal\n";
+        let windows = parse_wmctrl_output(output);
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0].id.as_deref(), Some("0x03400003"));
+        assert_eq!(windows[0].pid, Some(1234));
+        assert_eq!(windows[0].title.as_deref(), Some("Firefox — Inbox"));
+        assert!(
+            windows[0].app_name.is_none(),
+            "pure parse leaves app_name unset"
+        );
+        assert_eq!(windows[1].title.as_deref(), Some("Terminal"));
+    }
+
+    #[test]
+    fn find_window_among_matches_title_case_insensitively() {
+        let found = find_window_among(sample_windows(), Some("firefox"), None).expect("match");
+        assert_eq!(found.id.as_deref(), Some("0x03400003"));
+    }
+
+    #[test]
+    fn find_window_among_matches_app_case_insensitively() {
+        let found =
+            find_window_among(sample_windows(), None, Some("GNOME-TERMINAL")).expect("match");
+        assert_eq!(found.id.as_deref(), Some("0x05200007"));
+    }
+
+    #[test]
+    fn find_window_among_requires_both_filters_when_set() {
+        let err = find_window_among(sample_windows(), Some("Firefox"), Some("missing-app"))
+            .expect_err("no match");
+        assert!(
+            err.to_string().contains("no matching window found"),
+            "unexpected error: {err}"
+        );
     }
 }
