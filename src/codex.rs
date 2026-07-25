@@ -225,6 +225,43 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn newer_flat_sidecar_beats_stale_legacy_metadata() {
+        let dir = temp_dir("legacy-shadow");
+        let older = chrono::Utc::now() - chrono::Duration::seconds(120);
+        write_fixture_at(&dir, older);
+        write_flat_fixture(&dir, "cloche-shot-new", chrono::Utc::now());
+        let path = captures::resolve_metadata_path(&dir).expect("resolve");
+        assert!(
+            path.ends_with("cloche-shot-new.json"),
+            "flat sidecar should beat older metadata.json, got {}",
+            path.display()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn write_fixture_at(dir: &Path, created_at: chrono::DateTime<chrono::Utc>) {
+        let image_path = dir.join("shot.png");
+        std::fs::write(&image_path, b"png").expect("write image");
+        let metadata = AppshotResult {
+            ok: true,
+            version: "0.0.0".to_string(),
+            created_at,
+            target: CaptureTarget::Active,
+            backend: None,
+            output_dir: dir.to_path_buf(),
+            image: Some(image_info(&image_path)),
+            presentation_image: None,
+            presentation_style: None,
+            window: None,
+            text: TextInfo::default(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        };
+        let bytes = serde_json::to_vec_pretty(&metadata).expect("serialize metadata");
+        std::fs::write(dir.join("metadata.json"), bytes).expect("write metadata");
+    }
+
     fn write_flat_fixture(dir: &Path, stem: &str, created_at: chrono::DateTime<chrono::Utc>) {
         let image_path = dir.join(format!("{stem}.png"));
         std::fs::write(&image_path, b"png").expect("write image");

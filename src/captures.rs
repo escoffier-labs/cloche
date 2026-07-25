@@ -101,9 +101,8 @@ pub fn read_metadata(capture_dir: &Path) -> Result<AppshotResult, Box<dyn std::e
 ///
 /// Accepts:
 /// - a flat `<stem>.json` file
-/// - a legacy capture directory containing `metadata.json`
-/// - a flat-layout out-dir containing `cloche-shot*.json` / `appshot*.json`
-///   sidecars (newest `created_at` wins)
+/// - a directory containing legacy `metadata.json` and/or flat
+///   `cloche-shot*.json` / `appshot*.json` sidecars (newest `created_at` wins)
 pub fn resolve_metadata_path(capture: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     if capture.is_file() {
         return Ok(capture.to_path_buf());
@@ -112,12 +111,15 @@ pub fn resolve_metadata_path(capture: &Path) -> Result<PathBuf, Box<dyn std::err
         return Err(format!("capture path does not exist: {}", capture.display()).into());
     }
 
-    let legacy = capture.join("metadata.json");
-    if legacy.is_file() {
-        return Ok(legacy);
-    }
-
     let mut candidates = Vec::new();
+    let legacy = capture.join("metadata.json");
+    if legacy.is_file()
+        && let Ok(metadata) = read_metadata_file(&legacy)
+    {
+        // Include legacy in the same newest-wins ranking so a reused out-dir
+        // with an old metadata.json does not shadow newer flat sidecars.
+        candidates.push((metadata.created_at, legacy));
+    }
     let entries = std::fs::read_dir(capture)?;
     for entry in entries.flatten() {
         let path = entry.path();

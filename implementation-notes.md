@@ -445,7 +445,8 @@ because sub-ms loops can still collide.
 
 `codex-payload` directory input only joined `metadata.json`, so the default
 flat layout (`<stem>.json` in the out-dir) made the README quickstart fail.
-Resolution lives in `captures::resolve_metadata_path`: prefer legacy
-`metadata.json`, else newest `cloche-shot*.json` / `appshot*.json` by
-`created_at`. Picked newest over hard errors on ambiguity so a re-used demo
-out-dir keeps working.
+Resolution lives in `captures::resolve_metadata_path`: rank legacy
+`metadata.json` with flat `cloche-shot*.json` / `appshot*.json` by
+`created_at` and take the newest, so a reused pre-migration out-dir does not
+shadow a newer flat capture. Picked newest over hard errors on ambiguity so a
+re-used demo out-dir keeps working.
