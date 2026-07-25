@@ -65,4 +65,4 @@ Before posting output, remove tokens, private hostnames, private account names, 
 
 ## License
 
-By contributing you agree that your contribution is licensed under the Apache License 2.0, the same license as the rest of the repo.
+By contributing you agree that your contribution is licensed under the MIT License, the same license as the rest of the repo.

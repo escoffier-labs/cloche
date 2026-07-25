@@ -419,3 +419,13 @@ px, scaled at render). The space backdrop was reading as the focal point; the
 screenshot should be. At the default ~900px window this shrank the border from
 ~103px to ~59px per side, so the window fills more of the card while a thin
 space frame and the drop shadow still read. Applies to gradient cards too.
+
+## License relicense to MIT (2026-07-25)
+
+- Relicensed the project from Apache-2.0 to MIT to match the rest of the
+  Escoffier Labs open-source fleet (e.g. brigade) and the README badge that
+  already claimed MIT. Copyright holder remains Solomon Neas, 2026.
+- Surfaces updated together: `LICENSE`, `Cargo.toml` `license`, `CONTRIBUTING.md`,
+  README badge, and CHANGELOG. Issue #24 / PR #26 started as a badge-only fix
+  toward Apache; redirected to the full MIT relicense so the contributor PR
+  still lands the correction.
