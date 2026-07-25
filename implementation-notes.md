@@ -449,7 +449,8 @@ inside a per-shot or custom out-dir were invisible to gallery/latest/preview.
 Now: matching `cloche-shot*` / `appshot*` dirs collect legacy + flat sidecars;
 other immediate subdirs are scanned one level for flat sidecars only (so
 `/tmp/cloche-demo` works without treating every nested `metadata.json` as a
-shot). No deep recursion.
+shot). Sidecar paths are canonicalized into a seen-set so overlapping
+`--root` values (parent + child) do not double-count. No deep recursion.
 
 ## Codex payload flat out-dirs (2026-07-25)
 

@@ -38,13 +38,14 @@ pub fn find_captures(roots: Vec<PathBuf>, limit: usize) -> Vec<CaptureSummary> {
         roots
     };
     let mut captures = Vec::new();
-    let mut seen = std::collections::HashSet::new();
+    let mut seen_roots = std::collections::HashSet::new();
+    let mut seen_sidecars = std::collections::HashSet::new();
     for root in roots {
         // Canonicalize so the same dir reached via different paths (e.g. "." and
         // the gallery dir) is scanned once.
         let key = std::fs::canonicalize(&root).unwrap_or(root.clone());
-        if seen.insert(key) {
-            collect_captures(&root, &mut captures);
+        if seen_roots.insert(key) {
+            collect_captures(&root, &mut captures, &mut seen_sidecars);
         }
     }
     captures.sort_by_key(|capture| std::cmp::Reverse(capture.created_at));
@@ -52,7 +53,11 @@ pub fn find_captures(roots: Vec<PathBuf>, limit: usize) -> Vec<CaptureSummary> {
     captures
 }
 
-fn collect_captures(root: &Path, captures: &mut Vec<CaptureSummary>) {
+fn collect_captures(
+    root: &Path,
+    captures: &mut Vec<CaptureSummary>,
+    seen_sidecars: &mut std::collections::HashSet<PathBuf>,
+) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
@@ -64,7 +69,7 @@ fn collect_captures(root: &Path, captures: &mut Vec<CaptureSummary>) {
         if path.is_file() {
             // Flat layout at the scan root: `<stem>.json`.
             if name.ends_with(".json") && is_capture_name(name) {
-                push_if_metadata(captures, read_metadata_file(&path));
+                push_sidecar(captures, seen_sidecars, &path);
             }
             continue;
         }
@@ -74,11 +79,11 @@ fn collect_captures(root: &Path, captures: &mut Vec<CaptureSummary>) {
         if is_capture_name(name) {
             // Per-shot out-dir or legacy folder named cloche-shot* / appshot*:
             // collect legacy metadata.json and any flat sidecars inside.
-            collect_from_capture_dir(&path, captures);
+            collect_from_capture_dir(&path, captures, seen_sidecars);
         } else {
             // Custom out-dir one level down (e.g. /tmp/cloche-demo): only look
             // for flat sidecars so unrelated metadata.json files are ignored.
-            collect_flat_sidecars(&path, captures);
+            collect_flat_sidecars(&path, captures, seen_sidecars);
         }
     }
 }
@@ -87,12 +92,20 @@ fn is_capture_name(name: &str) -> bool {
     name.starts_with("cloche-shot") || name.starts_with("appshot")
 }
 
-fn collect_from_capture_dir(dir: &Path, captures: &mut Vec<CaptureSummary>) {
-    push_if_metadata(captures, read_metadata(dir));
-    collect_flat_sidecars(dir, captures);
+fn collect_from_capture_dir(
+    dir: &Path,
+    captures: &mut Vec<CaptureSummary>,
+    seen_sidecars: &mut std::collections::HashSet<PathBuf>,
+) {
+    push_sidecar(captures, seen_sidecars, &dir.join("metadata.json"));
+    collect_flat_sidecars(dir, captures, seen_sidecars);
 }
 
-fn collect_flat_sidecars(dir: &Path, captures: &mut Vec<CaptureSummary>) {
+fn collect_flat_sidecars(
+    dir: &Path,
+    captures: &mut Vec<CaptureSummary>,
+    seen_sidecars: &mut std::collections::HashSet<PathBuf>,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -102,16 +115,21 @@ fn collect_flat_sidecars(dir: &Path, captures: &mut Vec<CaptureSummary>) {
             continue;
         };
         if path.is_file() && name.ends_with(".json") && is_capture_name(name) {
-            push_if_metadata(captures, read_metadata_file(&path));
+            push_sidecar(captures, seen_sidecars, &path);
         }
     }
 }
 
-fn push_if_metadata(
+fn push_sidecar(
     captures: &mut Vec<CaptureSummary>,
-    metadata: Result<AppshotResult, Box<dyn std::error::Error>>,
+    seen_sidecars: &mut std::collections::HashSet<PathBuf>,
+    sidecar: &Path,
 ) {
-    if let Ok(metadata) = metadata {
+    let key = std::fs::canonicalize(sidecar).unwrap_or_else(|_| sidecar.to_path_buf());
+    if !seen_sidecars.insert(key) {
+        return;
+    }
+    if let Ok(metadata) = read_metadata_file(sidecar) {
         captures.push(CaptureSummary {
             output_dir: metadata.output_dir,
             created_at: metadata.created_at,
@@ -316,6 +334,21 @@ mod tests {
 
         let found = find_captures(vec![root.clone()], 10);
         assert_eq!(found.len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn overlapping_roots_do_not_duplicate_captures() {
+        let root = temp_root("overlap");
+        let nested = root.join("cloche-demo");
+        write_flat_capture(&nested, "cloche-shot-one", Utc::now());
+
+        let found = find_captures(vec![root.clone(), nested.clone()], 10);
+        assert_eq!(
+            found.len(),
+            1,
+            "parent + child roots should yield one capture, not two"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }
