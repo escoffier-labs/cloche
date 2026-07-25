@@ -18,7 +18,8 @@ use crate::util;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureSummary {
-    pub output_dir: PathBuf,
+    /// Gallery / `--out-dir` root for this capture's flat artifacts.
+    pub out_dir: PathBuf,
     pub created_at: chrono::DateTime<Utc>,
     pub target: CaptureTarget,
     pub image: Option<ImageInfo>,
@@ -131,7 +132,7 @@ fn push_sidecar(
     }
     if let Ok(metadata) = read_metadata_file(sidecar) {
         captures.push(CaptureSummary {
-            output_dir: metadata.output_dir,
+            out_dir: metadata.out_dir,
             created_at: metadata.created_at,
             target: metadata.target,
             image: metadata.image,
@@ -234,7 +235,7 @@ mod tests {
             created_at,
             target: CaptureTarget::Active,
             backend: None,
-            output_dir: dir.to_path_buf(),
+            out_dir: dir.to_path_buf(),
             image: Some(ImageInfo {
                 path: image_path,
                 width: Some(4),
@@ -264,7 +265,7 @@ mod tests {
             created_at,
             target: CaptureTarget::Active,
             backend: None,
-            output_dir: dir.to_path_buf(),
+            out_dir: dir.to_path_buf(),
             image: Some(ImageInfo {
                 path: image_path,
                 width: Some(4),

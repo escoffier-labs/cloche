@@ -118,12 +118,14 @@ fn tool_definitions() -> Value {
                     "title": { "type": "string", "description": "Window title to match when target=window." },
                     "app": { "type": "string", "description": "App name to match when target=window." },
                     "windowId": { "type": "string" },
-                    "outDir": { "type": "string", "description": "Output directory for the capture." },
+                    "outDir": { "type": "string", "description": "Directory for flat capture artifacts (defaults to ~/Pictures/Cloche). Not a per-shot folder." },
                     "presentation": { "type": "string", "enum": ["raw", "card", "both"], "default": "both" },
                     "detail": { "type": "string", "enum": ["auto", "low", "high", "original"], "default": "high" },
                     "styleSeed": { "type": "integer" },
-                    "clipboard": { "type": "boolean", "description": "Copy the card to the system clipboard after capture." }
-                }
+                    "clipboard": { "type": "boolean", "description": "Copy the card to the system clipboard after capture." },
+                    "format": { "type": "string", "enum": ["json"], "default": "json", "description": "Output format. The MCP wrapper always passes --format json." }
+                },
+                "required": []
             }
         },
         {
@@ -175,8 +177,14 @@ pub fn tool_command_args(name: &str, arguments: &Value) -> Result<Vec<String>, S
     match name {
         "capture" => {
             args.push("capture".to_string());
+            let format = string_arg(arguments, "format").unwrap_or_else(|| "json".to_string());
+            if format != "json" {
+                return Err(format!(
+                    "capture format must be json (got {format}); MCP always returns the CLI JSON contract"
+                ));
+            }
             args.push("--format".to_string());
-            args.push("json".to_string());
+            args.push(format);
             if let Some(value) = string_arg(arguments, "target") {
                 args.push("--target".to_string());
                 args.push(value);
@@ -444,5 +452,33 @@ mod tests {
     fn polish_args_require_input() {
         let error = tool_command_args("polish", &json!({})).expect_err("missing input");
         assert!(error.contains("input"));
+    }
+
+    #[test]
+    fn capture_schema_documents_format_and_required() {
+        let tools = tool_definitions();
+        let capture = tools
+            .as_array()
+            .expect("tools")
+            .iter()
+            .find(|tool| tool["name"] == "capture")
+            .expect("capture tool");
+        let schema = &capture["inputSchema"];
+        assert!(schema["required"].is_array());
+        assert_eq!(schema["properties"]["format"]["enum"], json!(["json"]));
+        assert_eq!(schema["properties"]["format"]["default"], json!("json"));
+    }
+
+    #[test]
+    fn capture_args_accept_explicit_json_format() {
+        let args = tool_command_args("capture", &json!({ "format": "json" })).expect("args");
+        assert!(args.windows(2).any(|w| w == ["--format", "json"]));
+    }
+
+    #[test]
+    fn capture_args_reject_non_json_format() {
+        let error =
+            tool_command_args("capture", &json!({ "format": "text" })).expect_err("bad format");
+        assert!(error.contains("json"));
     }
 }

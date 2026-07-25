@@ -45,7 +45,10 @@ pub struct AppshotResult {
     pub created_at: DateTime<Utc>,
     pub target: CaptureTarget,
     pub backend: Option<BackendInfo>,
-    pub output_dir: PathBuf,
+    /// Directory where flat capture artifacts were written (`--out-dir` /
+    /// default `~/Pictures/Cloche`). Not a per-shot folder.
+    #[serde(alias = "outputDir")]
+    pub out_dir: PathBuf,
     pub image: Option<ImageInfo>,
     pub presentation_image: Option<ImageInfo>,
     pub presentation_style: Option<PresentationStyleInfo>,
@@ -200,6 +203,8 @@ pub struct CapabilityStatus {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use chrono::Utc;
     use serde_json::json;
 
@@ -221,7 +226,7 @@ mod tests {
             created_at: Utc::now(),
             target: CaptureTarget::Active,
             backend: None,
-            output_dir: "/tmp/appshot".into(),
+            out_dir: "/tmp/appshot".into(),
             image: None,
             presentation_image: None,
             presentation_style: None,
@@ -234,7 +239,28 @@ mod tests {
         let value = serde_json::to_value(result).expect("serialize appshot result");
 
         assert!(value["createdAt"].is_string());
-        assert_eq!(value["outputDir"], json!("/tmp/appshot"));
+        assert_eq!(value["outDir"], json!("/tmp/appshot"));
+        assert!(
+            value.get("outputDir").is_none(),
+            "legacy outputDir must not be emitted on the wire"
+        );
         assert_eq!(value["target"], json!("active"));
+    }
+
+    #[test]
+    fn appshot_result_accepts_legacy_output_dir_alias() {
+        let value = json!({
+            "ok": true,
+            "version": "0.0.0",
+            "createdAt": "2026-07-25T00:00:00Z",
+            "target": "active",
+            "outputDir": "/tmp/legacy-shot",
+            "text": { "available": false, "bytes": 0 },
+            "warnings": [],
+            "errors": []
+        });
+        let parsed: AppshotResult =
+            serde_json::from_value(value).expect("deserialize legacy outputDir");
+        assert_eq!(parsed.out_dir, PathBuf::from("/tmp/legacy-shot"));
     }
 }

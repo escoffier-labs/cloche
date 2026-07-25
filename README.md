@@ -173,6 +173,7 @@ cloche preview
 cloche open /tmp/cloche-demo
 cloche schema
 cloche schema --for polish
+cloche schema --for reel-render
 cloche codex-payload --thread-id THREAD_ID /tmp/cloche-demo
 cloche codex-payload --thread-id THREAD_ID --card /tmp/cloche-demo
 cloche mcp

@@ -13,6 +13,9 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 - Relicensed from Apache-2.0 to MIT. `LICENSE`, `Cargo.toml`, `CONTRIBUTING.md`,
   and the README badge now agree on MIT.
+- Capture JSON renames `outputDir` to `outDir` to match flat `--out-dir` /
+  gallery semantics (not a per-shot folder). Deserialization still accepts the
+  legacy `outputDir` key so existing on-disk `*.json` sidecars load.
 
 ### Docs
 - README/ROADMAP drift sweep: Modes and roadmap now treat `cloche reels render`
@@ -23,6 +26,9 @@ All notable changes to this project are documented here. The format follows
   gap. CHANGELOG compare links catch up through 0.7.0.
 - Agent Use documents that `codex-payload` defaults to the raw frame and that
   `image.path` is not the polished card.
+- Command Reference documents `cloche schema --for reel-render`.
+- MCP `capture` input schema lists `format` (always `json`), an empty
+  `required` array, and clarifies `outDir` as the flat gallery root.
 
 
 ## [0.7.0] - 2026-07-18

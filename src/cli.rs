@@ -406,7 +406,7 @@ pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>
         created_at: Utc::now(),
         target: args.target,
         backend,
-        output_dir: util::canonical_or_original(&output_dir),
+        out_dir: util::canonical_or_original(&output_dir),
         image,
         presentation_image,
         presentation_style,
@@ -982,7 +982,7 @@ fn render_gallery_html(title: &str, captures: &[CaptureSummary]) -> String {
                 width: image.and_then(|info| info.width),
                 height: image.and_then(|info| info.height),
                 created_at: capture.created_at.to_rfc3339(),
-                output_dir: capture.output_dir.display().to_string(),
+                output_dir: capture.out_dir.display().to_string(),
                 image_path: image.map(|info| info.path.as_path()),
             }
         })
@@ -1279,7 +1279,11 @@ mod tests {
     fn schema_for_capture_describes_the_capture_contract() {
         let value = schema_value(SchemaTarget::Capture);
         let properties = value["properties"].as_object().expect("properties");
-        assert!(properties.contains_key("outputDir"));
+        assert!(properties.contains_key("outDir"));
+        assert!(
+            !properties.contains_key("outputDir"),
+            "legacy outputDir must not appear in the published schema"
+        );
         assert!(properties.contains_key("backend"));
         assert!(!properties.contains_key("card"));
     }
@@ -1372,7 +1376,7 @@ mod tests {
             created_at: chrono::Utc::now(),
             target: CaptureTarget::Active,
             backend: None,
-            output_dir: output_dir.to_path_buf(),
+            out_dir: output_dir.to_path_buf(),
             image: Some(image_info_at(raw)),
             presentation_image: card.map(image_info_at),
             presentation_style: None,

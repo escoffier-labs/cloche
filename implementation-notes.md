@@ -496,3 +496,14 @@ gnome-screenshot, then scrot, with no early return when xdotool is missing.
 Doctor's helper list is the single `LINUX_REACHABLE_HELPERS` constant (adds
 flameshot/xprop used by region/frame-extents; drops unused spectacle/gdbus).
 `x11-active-window` capability matches the same readiness predicate.
+
+## Contract naming: outDir + MCP capture schema (#22) (2026-07-25)
+
+Flat layout made `outputDir` misleading (it is the gallery / `--out-dir` root,
+not a per-shot folder). Renamed the Rust field to `out_dir` so the camelCase
+wire key is `outDir`, with `#[serde(alias = "outputDir")]` on `AppshotResult`
+so old sidecars still deserialize. MCP `capture` now advertises `format`
+(enum `json` only), `required: []`, and an `outDir` description that matches
+the flat layout; the wrapper still forces `--format json` and rejects other
+values. README Command Reference lists `schema --for reel-render` beside
+polish.
