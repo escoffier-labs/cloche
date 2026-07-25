@@ -21,6 +21,11 @@ pub struct CodexPayloadArgs {
     pub message: String,
     #[arg(long, value_enum, default_value = "high")]
     pub detail: ImageDetail,
+    /// Attach the polished presentation card instead of the raw capture frame.
+    /// Default is the raw image (`image` / `<stem>.raw.png`) so agents see the
+    /// unstyled pixels unless they opt in.
+    #[arg(long)]
+    pub card: bool,
     #[arg(long)]
     pub compact: bool,
 }
@@ -45,11 +50,21 @@ fn build_payload(args: &CodexPayloadArgs) -> Result<serde_json::Value, Box<dyn s
             "capture metadata is not successful; refusing to emit a Codex image payload".into(),
         );
     }
-    let image_path = metadata
-        .image
-        .as_ref()
-        .map(|image| image.path.clone())
-        .ok_or("capture metadata does not include an image")?;
+    let image_path = if args.card {
+        metadata
+            .presentation_image
+            .as_ref()
+            .map(|image| image.path.clone())
+            .ok_or(
+                "capture metadata does not include a presentation image; omit --card to use the raw frame",
+            )?
+    } else {
+        metadata
+            .image
+            .as_ref()
+            .map(|image| image.path.clone())
+            .ok_or("capture metadata does not include an image")?
+    };
     let image_path = util::canonical_or_original(&image_path);
     if !image_path.is_file() {
         return Err(format!("captured image does not exist: {}", image_path.display()).into());
@@ -158,8 +173,87 @@ mod tests {
             capture_dir: dir.to_path_buf(),
             message: "Cloche shot attached.".to_string(),
             detail: ImageDetail::High,
+            card: false,
             compact: false,
         }
+    }
+
+    fn write_fixture_with_card(dir: &Path) {
+        let raw = dir.join("shot.raw.png");
+        let card = dir.join("shot.png");
+        std::fs::write(&raw, b"raw").expect("write raw");
+        std::fs::write(&card, b"card").expect("write card");
+        let metadata = AppshotResult {
+            ok: true,
+            version: "0.0.0".to_string(),
+            created_at: chrono::Utc::now(),
+            target: CaptureTarget::Active,
+            backend: None,
+            output_dir: dir.to_path_buf(),
+            image: Some(image_info(&raw)),
+            presentation_image: Some(image_info(&card)),
+            presentation_style: None,
+            window: None,
+            text: TextInfo::default(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        };
+        let bytes = serde_json::to_vec_pretty(&metadata).expect("serialize metadata");
+        std::fs::write(dir.join("metadata.json"), bytes).expect("write metadata");
+    }
+
+    #[test]
+    fn payload_defaults_to_raw_image_not_card() {
+        let dir = temp_dir("raw-default");
+        write_fixture_with_card(&dir);
+        let payload = build_payload(&args(&dir)).expect("payload");
+        let path = payload["params"]["input"]
+            .as_array()
+            .expect("input")
+            .last()
+            .expect("image")["path"]
+            .as_str()
+            .expect("path");
+        assert!(
+            path.ends_with("shot.raw.png"),
+            "default payload must attach the raw frame, got {path}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn payload_card_flag_selects_presentation_image() {
+        let dir = temp_dir("card-flag");
+        write_fixture_with_card(&dir);
+        let mut a = args(&dir);
+        a.card = true;
+        let payload = build_payload(&a).expect("payload");
+        let path = payload["params"]["input"]
+            .as_array()
+            .expect("input")
+            .last()
+            .expect("image")["path"]
+            .as_str()
+            .expect("path");
+        assert!(
+            path.ends_with("shot.png"),
+            "--card should attach the polished card, got {path}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn payload_card_flag_errors_when_presentation_missing() {
+        let dir = temp_dir("card-missing");
+        write_fixture(&dir, true, true, None);
+        let mut a = args(&dir);
+        a.card = true;
+        let error = build_payload(&a).expect_err("refused");
+        assert!(
+            error.to_string().contains("presentation image"),
+            "unexpected error: {error}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
