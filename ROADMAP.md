@@ -7,16 +7,19 @@ Cloche is an open-source, OS-agnostic desktop capture tool for agents, scripts, 
 Cloche has two first-class modes:
 
 - **Shots**: still screenshots, available now.
-- **Reels**: short screen recordings, planned from the existing Appreels prototype.
+- **Reels**: experimental render is available now (`cloche reels render`);
+  desktop `record` and the rest of the capture workflow are still planned from
+  the Appreels prototype.
 
-GIF support is planned as an export target after Reels, not as the primary recording backend.
+GIF support is planned as an export target after Reels capture lands, not as the
+primary recording backend.
 
-## Current: Shots MVP
+## Current: Shots + experimental Reels render
 
 - Linux active-window capture on GNOME/X11 with automatic desktop environment discovery for TTY/SSH/agent processes.
 - Windows active-window and selected-window capture through Win32 metadata plus `PrintWindow`, with .NET screen capture for virtual-screen captures and fallback cases.
 - Windows best-effort text extraction through UI Automation.
-- Raw `shot.png`, polished randomized `shot-card.png`, `metadata.json`, and optional `text.txt`.
+- Flat capture artifacts in `~/Pictures/Cloche` by default: `<stem>.png` (card), `<stem>.raw.png`, `<stem>.json`, optional `<stem>.txt` (legacy folder-per-shot layouts still readable).
 - `polish` command and MCP tool that style any existing image into the same presentation card, so agents and scripts can reframe screenshots they did not capture with Cloche.
 - Stable JSON output for agent subprocess use.
 - Codex app-server payload generation through existing `localImage` input.
@@ -24,6 +27,7 @@ GIF support is planned as an export target after Reels, not as the primary recor
 - Self-contained HTML gallery export through `gallery --html` for sharing batches.
 - Optional stdio MCP server (`cloche mcp`) wrapping the CLI contract.
 - Compatibility binary and MCP path through `appshots`.
+- Experimental `cloche reels render` with `--engine remotion` or `--engine hyperframes` (existing MP4 + cue JSON in, framed vertical MP4 out).
 
 ## Rename And Repository Transition (done)
 
@@ -32,36 +36,26 @@ The rebrand shipped: `cloche` is the primary binary/package name, the repository
 - Keep `appshots` as a compatibility binary until existing automation, docs, release assets, and downstream MCP configs have moved.
 - Keep the old Appshots context in docs only where it explains compatibility or Codex's documented Appshots feature.
 
-## Next: Reels Mode
+## Next: Reels capture and polish
 
-Reels should merge the useful Appreels work into Cloche without making video feel bolted on.
+`cloche reels render` already ships (Remotion and HyperFrames engines). Remaining
+work merges the rest of Appreels into Cloche without making video feel bolted on.
 
-- Experimental Remotion rendering is available through `cloche reels render --engine remotion`.
-  It consumes an existing MP4 plus AppReels-shaped cue JSON and outputs a vertical MP4.
-- A second engine, `--engine hyperframes`, generates a HyperFrames HTML
-  composition from the same input and renders it via `npx hyperframes`. It
-  writes a Cloche-branded `DESIGN.md` and reuses the still `shot-card` palette
-  (`--palette`/`--style-seed`), so Shots and Reels already share one identity for
-  this engine. No vendored node project; the launcher is `CLOCHE_HYPERFRAMES_CMD`.
-- Add a `cloche reels` command group once the integration starts.
-- Bring over Appreels capture and render pieces behind Cloche naming:
-  - `record` for raw short desktop captures.
-  - `render` for polished video framing, captions, cursor emphasis, title cards, and outro cards.
-  - `perform-terminal` and `perform-browser` once the scripting path is stable enough.
-- Share presentation styling between Shots and Reels so both modes look like one product.
+- Ship `cloche reels record` for raw short desktop captures (X11/Linux first).
+- Keep deepening `render`: cursor emphasis, richer cue authoring, and tighter
+  shared presentation with still cards (HyperFrames already shares
+  `--palette`/`--style-seed`; Remotion should stay visually aligned).
+- Add `perform-terminal` and `perform-browser` once the scripting path is stable enough.
 - Preserve stable JSON contracts with `ok`, `warnings`, `errors`, paths, durations, and generated artifact metadata.
-- Keep X11/Linux as the first Reels backend because the current Appreels prototype already works there.
 - Treat Windows Reels as later backend work unless a user need forces it earlier. macOS is not a target platform.
 
 ## Reels Integration Sequence
 
-1. Create the Cloche command shape:
-   - `cloche shots capture`
-   - `cloche shots gallery`
-   - `cloche reels record`
-   - `cloche reels render`
-   - keep top-level `cloche capture` as a Shots shortcut for compatibility.
-2. Extract or vendor shared presentation code from Appreels so Shots and Reels use the same palette, padding, corner radius, and shadow model.
+1. ~~Command shape for render~~: `cloche reels render` is live; keep top-level
+   `cloche capture` as the Shots shortcut. Optional later nesting:
+   `cloche shots capture` / `cloche shots gallery` / `cloche reels record`.
+2. Extract or vendor shared presentation code so both Remotion and HyperFrames
+   stay aligned with still `shot-card` palette, padding, corner radius, and shadow.
 3. Port the Appreels script schema under Cloche naming and keep the JSON schema command.
 4. Add Reels output metadata:
    - `rawVideo`
@@ -100,7 +94,7 @@ GIF export is intentionally later.
 - Keep container tests focused on build, packaging, CLI contract, `schema`, `doctor`, and helper-detection behavior.
 - Keep real screenshot capture in VM or desktop-session tests because it needs a graphical desktop session.
 - Add optional VM/desktop smoke targets for GNOME X11, GNOME Wayland, KDE, and wlroots compositors.
-- Add Reels media smoke tests once video mode lands.
+- Add Reels media smoke tests for `cloche reels render` (and `record` once it lands).
 
 ## Release Packaging
 

@@ -462,6 +462,15 @@ Resolution lives in `captures::resolve_metadata_path`: rank legacy
 shadow a newer flat capture. Picked newest over hard errors on ambiguity so a
 re-used demo out-dir keeps working.
 
+## Docs drift sweep (#23) (2026-07-25)
+
+Single PR aligned README Modes/Output Files/Command Reference, ROADMAP
+"current vs next", and CHANGELOG compare links with the shipped tree: reels
+render is experimental-but-real, flat gallery layout is the default artifact
+story, and platform caveats (`wmctrl` hard-fail, Windows clipboard) match the
+code. Kept GIF and `reels record` as future so the roadmap still has a next
+slice.
+
 ## Active-target fallbacks without xdotool (2026-07-25)
 
 `capture --target active` required xdotool to identify a window before the

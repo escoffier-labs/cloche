@@ -154,21 +154,26 @@ no-op warning. The same flag is available on the MCP `polish` tool.
 ```bash
 cloche doctor --format json
 cloche list-windows --format json
-cloche capture --target active --presentation both --out-dir /tmp/cloche-shot --format json
-cloche capture --target active --style-seed 12345 --out-dir /tmp/cloche-shot --format json
-cloche capture --target screen --out-dir /tmp/cloche-shot --format json
-cloche capture --target window --title Firefox --out-dir /tmp/cloche-shot --format json
-cloche capture --target region --presentation both --clipboard --out-dir /tmp/cloche-shot --format json
+cloche capture --target active --presentation both --format json
+cloche capture --target active --detail high --style-seed 12345 --out-dir /tmp/cloche-demo --format json
+cloche capture --target screen --out-dir /tmp/cloche-demo --format json
+cloche capture --target window --title Firefox --out-dir /tmp/cloche-demo --format json
+cloche capture --target window --window-id 0x3400003 --out-dir /tmp/cloche-demo --format json
+cloche capture --target window --app firefox --out-dir /tmp/cloche-demo --format json
+cloche capture --target region --presentation both --clipboard --out-dir /tmp/cloche-demo --format json
 cloche polish /tmp/diff.png --format json
-cloche polish /tmp/diff.png --out /tmp/diff-card.png --palette ember-glow --style-seed 12345
+cloche polish /tmp/diff.png --out /tmp/diff-card.png --palette ember-glow --scene jwst --style-seed 12345
+cloche reels render --input raw.mp4 --out demo.mp4 --cues cues.json --title "Create a project"
+cloche reels render --engine hyperframes --input raw.mp4 --out demo.mp4 --cues cues.json \
+  --palette ember-glow --style-seed 12345 --fps 60 --width 1080 --height 1920 --workers 1
 cloche gallery --limit 10
 cloche gallery --root /tmp --html /tmp/cloche.html --title "My Shots" --open
 cloche latest
 cloche preview
-cloche open /tmp/cloche-shot
+cloche open /tmp/cloche-demo
 cloche schema
 cloche schema --for polish
-cloche codex-payload --thread-id THREAD_ID /tmp/cloche-shot
+cloche codex-payload --thread-id THREAD_ID /tmp/cloche-demo
 cloche mcp
 cloche setup
 cloche setup --print
@@ -177,15 +182,20 @@ cloche setup agent --client claude-code
 cloche setup verify --format json
 ```
 
+Omit `--out-dir` on capture to write into the default gallery (`~/Pictures/Cloche`).
 The old `appshots` command remains as an alias for the same code path.
 
 ## Modes
 
 **Shots** are available now. A Shot is a still capture with raw and presentation images, metadata, and optional extracted text.
 
-**Reels** are planned next. A Reel will be a short desktop recording with the same Cloche presentation system, cursor emphasis, captions, and stable metadata. The existing Appreels prototype is the starting point for this mode.
+**Reels** ship an experimental render path today: `cloche reels render` takes an
+existing MP4 plus AppReels-shaped cue JSON and outputs a framed vertical reel
+(`--engine remotion` or `--engine hyperframes`). Desktop `record` capture and
+the rest of the Reels workflow are still planned; see [ROADMAP.md](ROADMAP.md).
 
-**GIF export** is planned after Reels. GIFs will be generated from finished Reels as a delivery format, not recorded as the primary source format.
+**GIF export** is planned after the Reels capture path. GIFs will be generated
+from finished Reels as a delivery format, not recorded as the primary source.
 
 ## Why Cloche Exists
 
@@ -201,18 +211,22 @@ Reference: <https://developers.openai.com/codex/appshots>
 
 ## Output Files
 
-Each successful Shot directory contains:
+By default each capture writes flat files into `~/Pictures/Cloche` (override
+with `--out-dir`). Files share one stem (`cloche-shot-<UTC>Z-<pid>-<n>`):
 
-- `shot.png`, the raw captured image.
-- `shot-card.png`, a presentation image: the screenshot with rounded corners and a soft shadow on a full-bleed gradient backdrop, fully opaque so it survives JPEG and pasting anywhere.
-- `metadata.json`, the same JSON object printed to stdout.
-- `text.txt`, optional best-effort accessible text from the focused app.
+- `<stem>.png`, the shareable card (or the raw shot when `--presentation raw`).
+- `<stem>.raw.png`, the raw capture when a card owns `<stem>.png`.
+- `<stem>.json`, the same JSON object printed to stdout.
+- `<stem>.txt`, optional best-effort accessible text from the focused app.
+
+Legacy folder-per-shot captures (`shot.png`, `shot-card.png`, `metadata.json`,
+`text.txt`) are still readable by `gallery`, `latest`, and `preview`.
 
 Capture exits with `0` only when a raw image was written. Text extraction and presentation-image failures are warnings because accessibility support and desktop compositing vary by toolkit, app, desktop environment, and OS. `--target screen` exists as a fallback and debugging mode. `--target active` is the default.
 
-Use `--presentation raw`, `--presentation card`, or `--presentation both` to control output image generation. Use `--style-seed <number>` to reproduce a randomized card style exactly.
+Use `--presentation raw`, `--presentation card`, or `--presentation both` to control output image generation. Use `--style-seed <number>` to reproduce a randomized card style exactly. Use `--detail high|low|auto|original` for the Codex `localImage` detail hint stored in metadata.
 
-`--target region` opens an interactive selector (Flameshot when available, ImageMagick `import` drag-select on X11): drag a rectangle and the shot is taken the moment you release. Add `--clipboard` to copy the finished card straight to the clipboard (wl-copy on Wayland, xclip on X11). Region capture needs a human at the desk; it is not for headless agents. Not yet supported on Windows: use Win+Shift+S, save the file, then `cloche polish <file>`.
+`--target region` opens an interactive selector (Flameshot when available, ImageMagick `import` drag-select on X11): drag a rectangle and the shot is taken the moment you release. Add `--clipboard` to copy the finished card straight to the clipboard (wl-copy on Wayland, xclip on X11). Clipboard copy is not supported on Windows yet; the flag records a warning and the capture still succeeds. Region capture needs a human at the desk; it is not for headless agents. Region select itself is also not yet supported on Windows: use Win+Shift+S, save the file, then `cloche polish <file>`.
 
 ## Hotkey Workflow
 
@@ -262,13 +276,12 @@ Then bind `cloche-grab` to a key:
 Prefer no script? Bind this one-liner directly instead:
 
 ```bash
-cloche capture --target region --presentation both --clipboard --out-dir ~/Pictures/ClocheShots/$(date +%s)
+cloche capture --target region --presentation both --clipboard
 ```
 
-`cloche polish` writes a single card PNG instead of a Shot directory:
-`<input>-card.png` next to the input by default, or the `--out <path>` you
-pass (it must end in `.png`). Its stdout JSON reports `input`, `card`, and
-`presentationStyle`.
+`cloche polish` writes a single card PNG (`<input>-card.png` next to the
+input by default, or `--out <path>`; it must end in `.png`). Its stdout JSON
+reports `input`, `card`, and `presentationStyle`.
 
 ## Agent Use
 
@@ -318,8 +331,9 @@ Compatibility config:
 
 ## Linux Backend Notes
 
-- X11 active/window capture uses `xdotool`/`wmctrl` for window metadata and ImageMagick `import` for PNG capture.
-- Wayland wlroots screen capture uses `grim`.
+- X11 active/window capture uses `xdotool`/`wmctrl` for window metadata and ImageMagick `import` for PNG capture, with `gnome-screenshot`/`scrot` fallbacks for active-window when available.
+- `list-windows` requires X11 `DISPLAY` and `wmctrl`; without `wmctrl` it returns `ok: false` and an error (it does not soft-degrade).
+- Wayland wlroots screen capture uses `grim`. Region select prefers `flameshot`.
 - GNOME/KDE Wayland may block silent active-window capture by design. Use `--target screen` or run `cloche doctor --format json` for diagnostics.
 - Text extraction is best-effort through AT-SPI using Python GI when available.
 
@@ -343,6 +357,7 @@ tr '\0' '\n' </proc/$(pgrep -u "$(id -u)" -n gnome-shell)/environ | grep -E '^(D
 - Active/window capture uses Win32 foreground-window and top-level-window metadata, then captures the target window with `PrintWindow` so covered windows are not polluted by whatever is on top. It falls back to `.NET CopyFromScreen` if `PrintWindow` is unavailable for that window.
 - Screen capture uses the Windows virtual screen.
 - Text extraction is best-effort through UI Automation.
+- `--clipboard` is not implemented on Windows yet (warning only; capture still succeeds).
 - Capture must run in a logged-in interactive desktop session. Plain OpenSSH sessions can build and run `doctor`, but Windows blocks screen capture from the non-interactive SSH service session.
 
 ## Gallery HTML Export

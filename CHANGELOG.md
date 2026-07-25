@@ -10,6 +10,14 @@ All notable changes to this project are documented here. The format follows
 - Relicensed from Apache-2.0 to MIT. `LICENSE`, `Cargo.toml`, `CONTRIBUTING.md`,
   and the README badge now agree on MIT.
 
+### Docs
+- README/ROADMAP drift sweep: Modes and roadmap now treat `cloche reels render`
+  as shipped (experimental) with `record` still planned; Output Files documents
+  the flat `~/Pictures/Cloche` layout; Command Reference covers `--detail`,
+  `--window-id`, `--app`, and reels render flags; Linux notes that
+  `list-windows` hard-fails without `wmctrl`; `--clipboard` notes the Windows
+  gap. CHANGELOG compare links catch up through 0.7.0.
+
 
 ## [0.7.0] - 2026-07-18
 
@@ -207,7 +215,12 @@ All notable changes to this project are documented here. The format follows
   `preview` helpers, HTML gallery export, Codex `turn/start` payload
   generation, and a stdio MCP server.
 
-[Unreleased]: https://github.com/escoffier-labs/cloche/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/escoffier-labs/cloche/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/escoffier-labs/cloche/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/escoffier-labs/cloche/compare/v0.5.1...v0.6.0
+[0.5.1]: https://github.com/escoffier-labs/cloche/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/escoffier-labs/cloche/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/escoffier-labs/cloche/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/escoffier-labs/cloche/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/escoffier-labs/cloche/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/escoffier-labs/cloche/releases/tag/v0.1.0
