@@ -9,6 +9,7 @@ mod contract;
 mod design;
 mod html;
 mod mcp;
+mod pattern;
 mod polish;
 mod reel_hyperframes;
 mod setup;

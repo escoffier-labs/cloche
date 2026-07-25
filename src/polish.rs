@@ -29,6 +29,8 @@ pub enum BackdropKind {
     Gradient,
     /// Procedural deep-space scene: starfield, nebula dust, celestial bodies.
     Space,
+    /// Procedural geometric cloth or paper: plaids, stripes, rules, weaves.
+    Pattern,
 }
 
 struct Palette {
@@ -69,10 +71,29 @@ const fn space(
     }
 }
 
+/// Pattern palette stops read differently from the other two families:
+/// stop 0 is the ground the cloth is woven on, stop 1 a broad tonal drift, and
+/// stop 2 the ink the motif is drawn in. The glows are the two overcheck
+/// accents.
+const fn pattern(
+    name: &'static str,
+    stops: [[u8; 3]; 3],
+    glow_a: [u8; 3],
+    glow_b: [u8; 3],
+) -> Palette {
+    Palette {
+        name,
+        kind: BackdropKind::Pattern,
+        stops,
+        glow_a,
+        glow_b,
+    }
+}
+
 /// Space palette colors are sampled from astrophotography of the named
 /// objects (emission pinks, reflection blues, dust golds); stops run
 /// dark-to-mid so `design.rs` still reads stop 0 as the canvas base.
-const PALETTES: [Palette; 13] = [
+const PALETTES: [Palette; 27] = [
     gradient(
         "violet-haze",
         [[49, 29, 130], [112, 52, 224], [44, 84, 228]],
@@ -102,6 +123,30 @@ const PALETTES: [Palette; 13] = [
         [[14, 24, 58], [40, 78, 198], [92, 170, 248]],
         [142, 102, 248],
         [132, 228, 250],
+    ),
+    gradient(
+        "sea-glass",
+        [[12, 58, 62], [24, 120, 120], [120, 206, 190]],
+        [180, 240, 220],
+        [40, 120, 180],
+    ),
+    gradient(
+        "peach-dusk",
+        [[60, 26, 44], [184, 80, 86], [248, 158, 120]],
+        [255, 206, 150],
+        [140, 74, 170],
+    ),
+    gradient(
+        "ink-wash",
+        [[16, 18, 26], [48, 56, 78], [120, 132, 164]],
+        [190, 204, 236],
+        [70, 90, 140],
+    ),
+    gradient(
+        "citrus-noon",
+        [[92, 72, 10], [206, 158, 24], [248, 214, 92]],
+        [255, 246, 180],
+        [200, 96, 40],
     ),
     space(
         "orion-emission",
@@ -151,6 +196,66 @@ const PALETTES: [Palette; 13] = [
         [255, 150, 190],
         [130, 170, 240],
     ),
+    space(
+        "eagle-pillars",
+        [[10, 8, 16], [52, 40, 36], [124, 96, 70]],
+        [240, 200, 140],
+        [110, 170, 200],
+    ),
+    space(
+        "crab-remnant",
+        [[10, 8, 14], [54, 30, 58], [126, 64, 96]],
+        [220, 120, 230],
+        [120, 220, 200],
+    ),
+    space(
+        "tarantula-web",
+        [[8, 10, 16], [38, 52, 66], [96, 120, 140]],
+        [255, 170, 140],
+        [150, 200, 255],
+    ),
+    space(
+        "sombrero-dust",
+        [[12, 10, 10], [48, 42, 36], [128, 112, 88]],
+        [255, 232, 190],
+        [150, 170, 210],
+    ),
+    pattern(
+        "tartan-moss",
+        [[18, 26, 20], [34, 48, 36], [96, 124, 86]],
+        [214, 178, 96],
+        [140, 60, 52],
+    ),
+    pattern(
+        "oxford-navy",
+        [[16, 22, 38], [28, 38, 62], [78, 100, 150]],
+        [220, 228, 240],
+        [180, 60, 70],
+    ),
+    pattern(
+        "blueprint",
+        [[10, 32, 64], [16, 46, 88], [140, 190, 240]],
+        [235, 245, 255],
+        [90, 150, 210],
+    ),
+    pattern(
+        "ledger-cream",
+        [[238, 232, 214], [228, 220, 198], [70, 80, 96]],
+        [176, 70, 60],
+        [110, 140, 120],
+    ),
+    pattern(
+        "picnic-red",
+        [[236, 226, 214], [226, 212, 196], [178, 44, 44]],
+        [250, 244, 236],
+        [120, 30, 30],
+    ),
+    pattern(
+        "workshop-ochre",
+        [[40, 32, 22], [58, 46, 30], [162, 120, 54]],
+        [232, 196, 120],
+        [96, 112, 88],
+    ),
 ];
 
 #[derive(Debug, Clone)]
@@ -173,6 +278,8 @@ pub struct PresentationStyle {
     pub glow_b_pos: (f32, f32),
     /// Optional pinned space scene; `None` lets the seed pick at random.
     pub scene: Option<crate::space::SceneKind>,
+    /// Optional pinned pattern motif; `None` lets the seed pick at random.
+    pub motif: Option<crate::pattern::MotifKind>,
 }
 
 pub fn random_style() -> PresentationStyle {
@@ -189,10 +296,25 @@ pub fn scene_from_name(name: &str) -> Option<crate::space::SceneKind> {
     crate::space::SceneKind::from_name(name)
 }
 
+/// All motif names accepted by `--motif` / [`motif_from_name`], in menu order.
+pub fn motif_names() -> Vec<&'static str> {
+    crate::pattern::MotifKind::NAMES.to_vec()
+}
+
+/// Parse a `--motif` value into a [`crate::pattern::MotifKind`].
+pub fn motif_from_name(name: &str) -> Option<crate::pattern::MotifKind> {
+    crate::pattern::MotifKind::from_name(name)
+}
+
 impl PresentationStyle {
-    /// Whether this style paints a procedural space scene (vs a gradient).
+    /// Whether this style paints a procedural space scene.
     pub fn is_space(&self) -> bool {
         self.backdrop == BackdropKind::Space
+    }
+
+    /// Whether this style paints a geometric pattern.
+    pub fn is_pattern(&self) -> bool {
+        self.backdrop == BackdropKind::Pattern
     }
 }
 
@@ -214,6 +336,7 @@ pub fn palette_catalog() -> Vec<(&'static str, &'static str)> {
             let kind = match palette.kind {
                 BackdropKind::Gradient => "gradient",
                 BackdropKind::Space => "space",
+                BackdropKind::Pattern => "pattern",
             };
             (palette.name, kind)
         })
@@ -236,7 +359,38 @@ pub fn style_with_palette(seed: u64, palette_name: &str) -> Option<PresentationS
 }
 
 pub fn style_from_seed(seed: u64) -> PresentationStyle {
-    style_from_seed_in_pool(seed, &[], &[])
+    style_from_seed_in_pool(seed, &[], &[], &[])
+}
+
+/// FNV-1a, hand-rolled because `DefaultHasher` is explicitly not stable across
+/// Rust releases and a backdrop that changes when the toolchain updates is not
+/// reproducible.
+fn fnv1a(bytes: &[u8], mut hash: u64) -> u64 {
+    for byte in bytes {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
+const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+
+/// Score a candidate name against a seed. Highest score wins.
+fn affinity(seed: u64, name: &str) -> u64 {
+    fnv1a(name.as_bytes(), fnv1a(&seed.to_le_bytes(), FNV_OFFSET))
+}
+
+/// Rendezvous selection: score every candidate against the seed and take the
+/// best. Indexing by `rng.random_range(0..pool.len())` makes the pool length
+/// the modulus, so adding one palette reshuffles what every existing seed
+/// renders. Scoring by name means a newcomer only takes the seeds it actually
+/// wins, leaving the rest of the table alone, which is what makes the palette
+/// list safe to grow. Ties break on the name so the result is total.
+fn pick_by_affinity<'a>(seed: u64, names: &[&'a str]) -> Option<&'a str> {
+    names
+        .iter()
+        .copied()
+        .max_by_key(|name| (affinity(seed, name), *name))
 }
 
 /// Seeded style whose random picks are confined to the caller's allow-lists.
@@ -251,14 +405,15 @@ pub fn style_from_seed_in_pool(
     seed: u64,
     palettes: &[String],
     scenes: &[String],
+    motifs: &[String],
 ) -> PresentationStyle {
-    let mut rng = StdRng::seed_from_u64(seed);
     let allowed: Vec<&Palette> = PALETTES
         .iter()
         .filter(|palette| palettes.iter().any(|name| name == palette.name))
         .collect();
-    // Random rotation stays space-only by default; the legacy gradient palettes
-    // are reachable by explicit `--palette` name or by naming them in the pool.
+    // Random rotation stays space-only by default; the gradient and pattern
+    // palettes are reachable by explicit `--palette` name or by naming them in
+    // the pool.
     let pool: Vec<&Palette> = if allowed.is_empty() {
         PALETTES
             .iter()
@@ -267,7 +422,16 @@ pub fn style_from_seed_in_pool(
     } else {
         allowed
     };
-    let palette = pool[rng.random_range(0..pool.len())];
+    let names: Vec<&str> = pool.iter().map(|palette| palette.name).collect();
+    let chosen = pick_by_affinity(seed, &names).unwrap_or(PALETTES[0].name);
+    let palette = PALETTES
+        .iter()
+        .find(|palette| palette.name == chosen)
+        .unwrap_or(&PALETTES[0]);
+
+    // The palette pick no longer draws from this rng, so the style fields are
+    // whatever the seed produces on a fresh stream.
+    let mut rng = StdRng::seed_from_u64(seed);
     let mut style = PresentationStyle {
         seed,
         palette_name: palette.name.to_string(),
@@ -285,20 +449,27 @@ pub fn style_from_seed_in_pool(
         glow_a_pos: (rng.random_range(0.55..=0.95), rng.random_range(0.0..=0.22)),
         glow_b_pos: (rng.random_range(0.05..=0.45), rng.random_range(0.72..=1.0)),
         scene: None,
+        motif: None,
     };
-    // Drawn after every other field so an unconstrained call leaves the seed's
-    // existing style untouched. Picking the scene here instead of teaching
-    // `space.rs` about pools keeps the pool honored exactly: the renderer's own
-    // roll blends kinds, a pin does not.
+
+    // A pooled second axis is pinned here rather than filtered inside the
+    // renderer: both `space.rs` and `pattern.rs` blend their own rolls, so
+    // filtering there would bias the pool instead of confining it.
     if style.is_space() && !scenes.is_empty() {
-        let allowed: Vec<&'static str> = crate::space::SceneKind::NAMES
+        let allowed: Vec<&str> = crate::space::SceneKind::NAMES
             .iter()
             .copied()
             .filter(|known| scenes.iter().any(|name| name == known))
             .collect();
-        if !allowed.is_empty() {
-            style.scene = scene_from_name(allowed[rng.random_range(0..allowed.len())]);
-        }
+        style.scene = pick_by_affinity(seed, &allowed).and_then(scene_from_name);
+    }
+    if style.is_pattern() && !motifs.is_empty() {
+        let allowed: Vec<&str> = crate::pattern::MotifKind::NAMES
+            .iter()
+            .copied()
+            .filter(|known| motifs.iter().any(|name| name == known))
+            .collect();
+        style.motif = pick_by_affinity(seed, &allowed).and_then(motif_from_name);
     }
     style
 }
@@ -511,8 +682,10 @@ pub fn render_backdrop(width: u32, height: u32, style: &PresentationStyle) -> Rg
 }
 
 fn backdrop(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
-    if style.backdrop == BackdropKind::Space {
-        return crate::space::render(width, height, style);
+    match style.backdrop {
+        BackdropKind::Space => return crate::space::render(width, height, style),
+        BackdropKind::Pattern => return crate::pattern::render(width, height, style),
+        BackdropKind::Gradient => {}
     }
     let stops = style.stops.map(to_f32);
     let glow_a = to_f32(style.glow_a);
@@ -763,11 +936,10 @@ mod tests {
 
     #[test]
     fn empty_pools_reproduce_the_unconstrained_style() {
-        // The pool argument must not shift the seed's draws, or every existing
-        // `--style-seed` would render differently after this change.
+        // The pool argument must not change the result for a given seed.
         let input = test_input(160, 120);
         for seed in 0..16 {
-            let base = style_from_seed_in_pool(seed, &[], &[]);
+            let base = style_from_seed_in_pool(seed, &[], &[], &[]);
             let pooled = style_from_seed(seed);
             assert_eq!(pooled.palette_name, base.palette_name, "seed {seed}");
             assert_eq!(pooled.scene, None, "seed {seed}");
@@ -784,7 +956,7 @@ mod tests {
         let pool = vec!["aurora-teal".to_string(), "lagoon-trifid".to_string()];
         let mut seen: Vec<String> = Vec::new();
         for seed in 0..64 {
-            let style = style_from_seed_in_pool(seed, &pool, &[]);
+            let style = style_from_seed_in_pool(seed, &pool, &[], &[]);
             assert!(
                 pool.contains(&style.palette_name),
                 "seed {seed} escaped the pool with {}",
@@ -803,7 +975,7 @@ mod tests {
         // The default rotation is space-only, so an explicit gradient pool is
         // the only way back to the legacy look without naming it per run.
         let pool = vec!["ember-glow".to_string()];
-        let style = style_from_seed_in_pool(5, &pool, &[]);
+        let style = style_from_seed_in_pool(5, &pool, &[], &[]);
         assert_eq!(style.palette_name, "ember-glow");
         assert!(!style.is_space());
     }
@@ -813,7 +985,7 @@ mod tests {
         let scenes = vec!["alma".to_string(), "veil".to_string()];
         let allowed = [scene_from_name("alma"), scene_from_name("veil")];
         for seed in 0..32 {
-            let style = style_from_seed_in_pool(seed, &[], &scenes);
+            let style = style_from_seed_in_pool(seed, &[], &scenes, &[]);
             assert!(
                 allowed.contains(&style.scene),
                 "seed {seed} produced {:?}",
@@ -826,14 +998,14 @@ mod tests {
     fn scene_pool_is_ignored_for_gradient_palettes() {
         let palettes = vec!["ember-glow".to_string()];
         let scenes = vec!["alma".to_string()];
-        let style = style_from_seed_in_pool(3, &palettes, &scenes);
+        let style = style_from_seed_in_pool(3, &palettes, &scenes, &[]);
         assert_eq!(style.scene, None);
     }
 
     #[test]
     fn unknown_pool_names_fall_back_to_the_default_pool() {
         let palettes = vec!["hotdog-stand".to_string()];
-        let style = style_from_seed_in_pool(11, &palettes, &[]);
+        let style = style_from_seed_in_pool(11, &palettes, &[], &[]);
         assert_eq!(style.palette_name, style_from_seed(11).palette_name);
         assert!(style.is_space());
     }
@@ -889,6 +1061,128 @@ mod tests {
     }
 
     #[test]
+    fn growing_the_table_leaves_most_seeds_alone() {
+        // The point of scoring by name instead of indexing by position: adding
+        // a palette must only take the seeds it actually wins. With modulo
+        // indexing this number would be near zero.
+        let current: Vec<String> = PALETTES
+            .iter()
+            .filter(|palette| palette.kind == BackdropKind::Space)
+            .map(|palette| palette.name.to_string())
+            .collect();
+        let mut grown = current.clone();
+        grown.push("a-brand-new-sky".to_string());
+
+        let mut unchanged = 0;
+        let total = 600;
+        for seed in 0..total {
+            let before = pick_by_affinity(
+                seed,
+                &current.iter().map(String::as_str).collect::<Vec<_>>(),
+            );
+            let after =
+                pick_by_affinity(seed, &grown.iter().map(String::as_str).collect::<Vec<_>>());
+            if before == after {
+                unchanged += 1;
+            }
+        }
+        // One new entry among 13 should disturb roughly 1/13 of seeds.
+        assert!(
+            unchanged as f64 / total as f64 > 0.85,
+            "only {unchanged}/{total} seeds kept their palette"
+        );
+    }
+
+    #[test]
+    fn affinity_selection_spreads_across_the_pool() {
+        // A hash that favoured one name would make the picker look broken.
+        let names: Vec<&str> = PALETTES
+            .iter()
+            .filter(|palette| palette.kind == BackdropKind::Space)
+            .map(|palette| palette.name)
+            .collect();
+        let mut seen: Vec<&str> = Vec::new();
+        for seed in 0..400 {
+            let pick = pick_by_affinity(seed, &names).expect("pool");
+            if !seen.contains(&pick) {
+                seen.push(pick);
+            }
+        }
+        assert_eq!(
+            seen.len(),
+            names.len(),
+            "unreached: {:?}",
+            names.len() - seen.len()
+        );
+    }
+
+    #[test]
+    fn every_space_palette_is_reachable_by_the_default_picker() {
+        // "all the space palettes are available" as an assertion, not a hope.
+        let expected: Vec<&str> = PALETTES
+            .iter()
+            .filter(|palette| palette.kind == BackdropKind::Space)
+            .map(|palette| palette.name)
+            .collect();
+        let mut seen: Vec<String> = Vec::new();
+        for seed in 0..500 {
+            let name = style_from_seed(seed).palette_name;
+            if !seen.contains(&name) {
+                seen.push(name);
+            }
+        }
+        assert_eq!(seen.len(), expected.len(), "reached {seen:?}");
+    }
+
+    #[test]
+    fn pattern_palettes_render_as_patterns() {
+        let style = style_with_palette(4, "blueprint").expect("pattern palette");
+        assert!(style.is_pattern());
+        assert!(!style.is_space());
+        let a = render_backdrop(64, 48, &style);
+        let b = render_backdrop(
+            64,
+            48,
+            &style_with_palette(4, "midnight-sky").expect("gradient"),
+        );
+        assert_ne!(a.as_raw(), b.as_raw());
+    }
+
+    #[test]
+    fn a_motif_pool_confines_the_pick() {
+        let motifs = vec!["plaid".to_string(), "grid".to_string()];
+        let palettes = vec!["tartan-moss".to_string()];
+        let allowed = [motif_from_name("plaid"), motif_from_name("grid")];
+        for seed in 0..40 {
+            let style = style_from_seed_in_pool(seed, &palettes, &[], &motifs);
+            assert!(
+                allowed.contains(&style.motif),
+                "seed {seed}: {:?}",
+                style.motif
+            );
+        }
+    }
+
+    #[test]
+    fn a_motif_pool_is_ignored_for_non_pattern_palettes() {
+        let motifs = vec!["plaid".to_string()];
+        let palettes = vec!["orion-emission".to_string()];
+        assert_eq!(
+            style_from_seed_in_pool(3, &palettes, &[], &motifs).motif,
+            None
+        );
+    }
+
+    #[test]
+    fn the_table_has_all_three_families() {
+        let catalog = palette_catalog();
+        for kind in ["gradient", "space", "pattern"] {
+            let count = catalog.iter().filter(|(_, k)| *k == kind).count();
+            assert!(count >= 5, "{kind} has only {count} palettes");
+        }
+    }
+
+    #[test]
     fn palette_catalog_labels_every_palette() {
         let catalog = palette_catalog();
         assert_eq!(catalog.len(), PALETTES.len());
@@ -900,6 +1194,7 @@ mod tests {
             let expected = match palette.kind {
                 BackdropKind::Gradient => "gradient",
                 BackdropKind::Space => "space",
+                BackdropKind::Pattern => "pattern",
             };
             assert_eq!(kind, &expected, "{name}");
         }

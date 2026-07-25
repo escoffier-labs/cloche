@@ -130,10 +130,16 @@ code{font-family:var(--mono)}
   box-shadow:0 0 0 1px var(--accent), 0 8px 26px -12px var(--accent)}
 .thumb.pinned .name{color:var(--ink); font-weight:500}
 .thumb.pinned .name::after{content:" ·pinned"; color:var(--accent)}
+.thumb.auto .shot{border-color:var(--rule)}
+.thumb.auto img{opacity:.86}
+.thumb.auto .name{color:var(--dim)}
+.thumb.auto .name::after{content:" ·auto"; color:var(--faint)}
 .thumb.dead{cursor:not-allowed}
 .thumb.dead img{opacity:.16; filter:grayscale(1)}
 .thumb.dead .name{color:var(--faint); text-decoration:none}
 .deadnote{margin:0 0 13px; font-size:12.5px; color:var(--faint)}
+.focusline{display:block; margin-top:5px; font-family:var(--mono); font-size:12px; color:var(--faint)}
+.focusline b{color:var(--accent-2); font-weight:400}
 
 @media (max-width:900px){.stage{grid-template-columns:minmax(0,1fr)}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
@@ -170,6 +176,7 @@ code{font-family:var(--mono)}
     <dl class="readout">
       <div class="row"><dt>backdrop</dt><dd id="roPalette">—</dd></div>
       <div class="row"><dt>scene look</dt><dd id="roScene">—</dd></div>
+      <div class="row"><dt>motif</dt><dd id="roMotif">—</dd></div>
     </dl>
     <p class="note" id="conflict" hidden></p>
     <div class="cmd">
@@ -191,9 +198,14 @@ code{font-family:var(--mono)}
     <div class="grid" id="gridSpace"></div>
   </div>
   <div class="group">
-    <div class="grouplab">Gradient <em>the original five</em></div>
-    <p class="deadnote">Out of the random rotation unless you switch one on. Scene looks do not apply to these.</p>
+    <div class="grouplab">Gradient <em>soft colour fields</em></div>
+    <p class="deadnote">Out of the random rotation unless you switch one on. Neither scene looks nor motifs apply to these.</p>
     <div class="grid" id="gridGradient"></div>
+  </div>
+  <div class="group">
+    <div class="grouplab">Pattern <em>woven and ruled</em></div>
+    <p class="deadnote">Out of the random rotation unless you switch one on. These take a motif instead of a scene look.</p>
+    <div class="grid" id="gridPattern"></div>
   </div>
 </section>
 
@@ -203,8 +215,20 @@ code{font-family:var(--mono)}
     <span class="bulk"><button data-bulk="scn-all">all</button><button data-bulk="scn-none">none</button></span>
     <span class="count" id="scnCount"></span>
   </div>
-  <p class="sub">How it was imaged. Leave every one off to let the seed decide.</p>
+  <p class="sub">How it was imaged. Leave every one off to let the seed decide.
+    <span class="focusline">shown on <b id="focusSpace"></b> &middot; hover a deep-space backdrop to see it there</span></p>
   <div class="grid scenes" id="gridScene"></div>
+</section>
+
+<section class="sheet">
+  <div class="head">
+    <h2>Motifs</h2><span class="flagname">--motif</span>
+    <span class="bulk"><button data-bulk="mot-all">all</button><button data-bulk="mot-none">none</button></span>
+    <span class="count" id="motCount"></span>
+  </div>
+  <p class="sub">How the cloth is woven. Leave every one off to let the seed decide.
+    <span class="focusline">shown on <b id="focusPattern"></b> &middot; hover a pattern backdrop to see it there</span></p>
+  <div class="grid scenes" id="gridMotif"></div>
 </section>
 
 <script>
@@ -212,41 +236,89 @@ const el = id => document.getElementById(id);
 const SEED = 21;                       // fixed so swatches stay comparable
 const ROLL = [3, 11, 29, 47, 58];      // hero seeds, to show the randomizer working
 let S = null, kinds = {}, sample = null, live = 0, timer = null;
+// Which backdrop the second-axis sheets are drawn on. Without this every scene
+// swatch would show the same palette and the 12 space palettes x 16 scenes
+// would be invisible.
+const focus = { space: null, pattern: null };
 
 const isSpace = n => kinds[n] === "space";
-const pal = () => S.polish.palettes, scn = () => S.polish.scenes;
+const isPattern = n => kinds[n] === "pattern";
+const pal = () => S.polish.palettes, scn = () => S.polish.scenes, mot = () => S.polish.motifs;
 const pinned = () => S.polish.mode === "pinned";
+const listFor = kind => kind === "palette" ? pal() : kind === "scene" ? scn() : mot();
+// An empty pool does not mean "nothing selected", it means "unconstrained":
+// the picker draws from every deep-space palette. Showing that as 0 of 27 with
+// every swatch struck through misreports the default state.
+const spaceNames = () => S.options.palettes.filter(p => p.kind === "space").map(p => p.name);
+const effectivePalettes = () => pal().length ? pal() : spaceNames();
+
+function swatchSrc(name, kind){
+  // Pattern palettes get a fixed motif so the row compares colour, not weave.
+  // Without it every pattern swatch shows whatever the shared seed rolled.
+  if(kind === "palette"){
+    const motif = isPattern(name) ? "&motif=plaid" : "";
+    return `palette=${name}${motif}&seed=${SEED}&w=300&h=225`;
+  }
+  if(kind === "scene") return `palette=${focus.space}&scene=${name}&seed=${SEED}&w=260&h=195`;
+  return `palette=${focus.pattern}&motif=${name}&seed=${SEED}&w=260&h=195`;
+}
 
 function swatch(name, kind){
-  const q = kind === "palette"
-    ? `palette=${name}&seed=${SEED}&w=300&h=225`
-    : `palette=orion-emission&scene=${name}&seed=${SEED}&w=260&h=195`;
   const b = document.createElement("button");
   b.className = "thumb"; b.dataset.name = name; b.dataset.kind = kind;
-  b.innerHTML = `<span class="shot"><img alt="${name}" loading="lazy" src="/api/backdrop?${q}"></span><span class="name">${name}</span>`;
+  b.innerHTML = `<span class="shot"><img alt="${name}" loading="lazy" src="/api/backdrop?${swatchSrc(name, kind)}"></span><span class="name">${name}</span>`;
   b.onclick = () => toggle(name, kind);
+  if(kind === "palette"){
+    // Hovering a backdrop re-draws the sheets below it, so the cross product
+    // is browsable without committing to anything.
+    b.onmouseenter = () => setFocus(name);
+  }
   return b;
+}
+
+function setFocus(name){
+  if(isSpace(name) && focus.space !== name){ focus.space = name; redraw("scene"); }
+  else if(isPattern(name) && focus.pattern !== name){ focus.pattern = name; redraw("motif"); }
+  else return;
+  el("focusSpace").textContent = focus.space;
+  el("focusPattern").textContent = focus.pattern;
+}
+
+function redraw(kind){
+  document.querySelectorAll(`.thumb[data-kind="${kind}"]`).forEach(b => {
+    b.querySelector("img").src = `/api/backdrop?${swatchSrc(b.dataset.name, kind)}`;
+  });
 }
 
 function toggle(name, kind){
   if(pinned()){
-    if(kind === "palette") S.polish.palette = name;
-    else S.polish.scene = S.polish.scene === name ? null : name;
+    if(kind === "palette"){ S.polish.palette = name; setFocus(name); }
+    else if(kind === "scene") S.polish.scene = S.polish.scene === name ? null : name;
+    else S.polish.motif = S.polish.motif === name ? null : name;
   } else {
-    const list = kind === "palette" ? pal() : scn();
+    // First click on an unconstrained pool materialises what is actually in
+    // rotation, so switching one off removes one rather than leaving one.
+    if(kind === "palette" && !pal().length) S.polish.palettes = spaceNames();
+    const list = listFor(kind);
     const at = list.indexOf(name);
     at === -1 ? list.push(name) : list.splice(at, 1);
   }
   render(); save();
 }
 
+function secondAxis(palette){
+  if(isSpace(palette)) return S.polish.scene ? `&scene=${S.polish.scene}` : "";
+  if(isPattern(palette)) return S.polish.motif ? `&motif=${S.polish.motif}` : "";
+  return "";
+}
+
 function heroSrc(){
   if(pinned()){
-    const p = S.polish.palette, s = isSpace(p) && S.polish.scene ? `&scene=${S.polish.scene}` : "";
-    return sample ? `/api/card?palette=${p}&seed=${SEED}${s}`
-                  : `/api/backdrop?palette=${p}&seed=${SEED}${s}&w=880&h=610`;
+    const p = S.polish.palette;
+    const q = `palette=${p}&seed=${SEED}${secondAxis(p)}`;
+    return sample ? `/api/card?${q}` : `/api/backdrop?${q}&w=880&h=610`;
   }
-  const pool = pal(), p = pool.length ? pool[live % pool.length] : "";
+  const pool = effectivePalettes(), p = pool.length ? pool[live % pool.length] : "";
   const q = (p ? `palette=${p}&` : "") + `seed=${ROLL[live % ROLL.length]}`;
   return sample ? `/api/card?${q}` : `/api/backdrop?${q}&w=880&h=610`;
 }
@@ -256,7 +328,7 @@ function paintHero(){
   img.alt = "";
   img.onload = () => {
     const frame = el("frame");
-    [...frame.children].forEach(old => { old.classList.remove("live"); setTimeout(()=>old.remove(), 600); });
+    [...frame.children].forEach(old => { old.classList.remove("live"); setTimeout(() => old.remove(), 600); });
     frame.appendChild(img);
     requestAnimationFrame(() => img.classList.add("live"));
   };
@@ -277,31 +349,53 @@ function render(){
     const n = b.dataset.name, kind = b.dataset.kind;
     b.classList.remove("on","off","pinned","dead");
     if(p){
-      if(kind === "palette") b.classList.add(n === S.polish.palette ? "pinned" : "off");
-      else if(!isSpace(S.polish.palette)) b.classList.add("dead");
-      else b.classList.add(n === S.polish.scene ? "pinned" : "off");
+      if(kind === "palette"){ b.classList.add(n === S.polish.palette ? "pinned" : "off"); return; }
+      const applies = kind === "scene" ? isSpace(S.polish.palette) : isPattern(S.polish.palette);
+      if(!applies){ b.classList.add("dead"); return; }
+      const held = kind === "scene" ? S.polish.scene : S.polish.motif;
+      b.classList.add(n === held ? "pinned" : "off");
+    } else if(kind === "palette"){
+      b.classList.add(effectivePalettes().includes(n) ? "on" : "off");
     } else {
-      b.classList.add((kind === "palette" ? pal() : scn()).includes(n) ? "on" : "off");
+      // No scene or motif pool means the seed decides, which is a real state,
+      // not an empty one.
+      b.classList.add(listFor(kind).length === 0 ? "auto" : listFor(kind).includes(n) ? "on" : "off");
     }
   });
 
-  const total = Object.keys(kinds).length;
+  const totals = { palette: S.options.palettes.length, scene: S.options.scenes.length, motif: S.options.motifs.length };
   el("palCount").innerHTML = p ? `pinned to <b>${S.polish.palette || "nothing"}</b>`
-    : `<b>${pal().length}</b> of ${total} in rotation`;
+    : pal().length ? `<b>${pal().length}</b> of ${totals.palette} in rotation`
+    : `<b>all ${spaceNames().length}</b> deep-space backdrops in rotation`;
+  const poolCount = (list, total) => list.length ? `<b>${list.length}</b> of ${total} in rotation` : "seed decides";
   el("scnCount").innerHTML = p
-    ? (isSpace(S.polish.palette) ? `pinned to <b>${S.polish.scene || "none"}</b>` : "not used by gradients")
-    : `<b>${scn().length}</b> of ${S.options.scenes.length} in rotation`;
-  el("roPalette").textContent = p ? (S.polish.palette || "none") : `${pal().length} of ${total} on`;
+    ? (isSpace(S.polish.palette) ? `pinned to <b>${S.polish.scene || "none"}</b>` : "not used by this backdrop")
+    : poolCount(scn(), totals.scene);
+  el("motCount").innerHTML = p
+    ? (isPattern(S.polish.palette) ? `pinned to <b>${S.polish.motif || "none"}</b>` : "not used by this backdrop")
+    : poolCount(mot(), totals.motif);
+  el("roPalette").textContent = p ? (S.polish.palette || "none")
+    : pal().length ? `${pal().length} of ${totals.palette} on` : `all ${spaceNames().length} deep-space`;
   el("roScene").textContent = p ? (S.polish.scene || "seed decides")
-    : `${scn().length} of ${S.options.scenes.length} on`;
+    : scn().length ? `${scn().length} of ${totals.scene} on` : "seed decides";
+  el("roMotif").textContent = p ? (S.polish.motif || "seed decides")
+    : mot().length ? `${mot().length} of ${totals.motif} on` : "seed decides";
 
-  const clash = p && S.polish.scene && S.polish.palette && !isSpace(S.polish.palette);
-  el("conflict").hidden = !clash;
-  if(clash) el("conflict").innerHTML =
-    `Scene looks need a deep-space backdrop. <code>${S.polish.palette}</code> is a gradient, so <code>${S.polish.scene}</code> is ignored.`;
+  const clashes = [];
+  if(p && S.polish.palette){
+    if(S.polish.scene && !isSpace(S.polish.palette))
+      clashes.push(`<code>${S.polish.scene}</code> is a scene look, which needs a deep-space backdrop`);
+    if(S.polish.motif && !isPattern(S.polish.palette))
+      clashes.push(`<code>${S.polish.motif}</code> is a motif, which needs a pattern backdrop`);
+  }
+  el("conflict").hidden = clashes.length === 0;
+  if(clashes.length) el("conflict").innerHTML =
+    `<code>${S.polish.palette}</code> is a ${kinds[S.polish.palette]} backdrop, so ${clashes.join(", and ")}. Ignored.`;
 
-  el("capPalette").textContent = p ? (S.polish.palette || "—") : (pal()[live % (pal().length||1)] || "any");
-  el("capScene").textContent = p ? (S.polish.scene || "seed decides") : "rolling";
+  const roll = effectivePalettes();
+  el("capPalette").textContent = p ? (S.polish.palette || "—") : (roll[live % (roll.length||1)] || "any");
+  const held = p ? (isPattern(S.polish.palette) ? S.polish.motif : S.polish.scene) : null;
+  el("capScene").textContent = p ? (held || "seed decides") : "rolling";
 
   const f = s => `<span class="flag">${s}</span>`, v = s => `<span class="val">${s}</span>`;
   let cmd;
@@ -309,10 +403,12 @@ function render(){
     cmd = `cloche config set ${f("--mode")} ${v("pinned")}`;
     if(S.polish.palette) cmd += ` \\\n  ${f("--palette")} ${v(S.polish.palette)}`;
     if(S.polish.scene) cmd += ` \\\n  ${f("--scene")} ${v(S.polish.scene)}`;
+    if(S.polish.motif) cmd += ` \\\n  ${f("--motif")} ${v(S.polish.motif)}`;
   } else {
     cmd = `cloche config set ${f("--mode")} ${v("random")}`;
     if(pal().length) cmd += ` \\\n  ${f("--palettes")} ${v(pal().join(","))}`;
     if(scn().length) cmd += ` \\\n  ${f("--scenes")} ${v(scn().join(","))}`;
+    if(mot().length) cmd += ` \\\n  ${f("--motifs")} ${v(mot().join(","))}`;
   }
   el("cmd").innerHTML = cmd;
   paintHero();
@@ -342,41 +438,54 @@ function save(){
 async function boot(){
   const state = await (await fetch("/api/state")).json();
   S = { polish: state.config.polish, options: state.options };
-  S.polish.palettes ||= []; S.polish.scenes ||= [];
+  S.polish.palettes ||= []; S.polish.scenes ||= []; S.polish.motifs ||= [];
   sample = state.sample;
   el("configPath").textContent = state.configPath;
   el("saveState").textContent = state.exists ? "saved to" : "will save to";
 
   state.options.palettes.forEach(p => kinds[p.name] = p.kind);
-  state.options.palettes.filter(p => p.kind === "space")
-    .forEach(p => el("gridSpace").appendChild(swatch(p.name, "palette")));
-  state.options.palettes.filter(p => p.kind === "gradient")
-    .forEach(p => el("gridGradient").appendChild(swatch(p.name, "palette")));
-  state.options.scenes.forEach(s => el("gridScene").appendChild(swatch(s, "scene")));
+  const byKind = k => state.options.palettes.filter(p => p.kind === k).map(p => p.name);
+  focus.space = byKind("space")[0];
+  focus.pattern = byKind("pattern")[0];
+  el("focusSpace").textContent = focus.space;
+  el("focusPattern").textContent = focus.pattern;
+
+  byKind("space").forEach(n => el("gridSpace").appendChild(swatch(n, "palette")));
+  byKind("gradient").forEach(n => el("gridGradient").appendChild(swatch(n, "palette")));
+  byKind("pattern").forEach(n => el("gridPattern").appendChild(swatch(n, "palette")));
+  state.options.scenes.forEach(n => el("gridScene").appendChild(swatch(n, "scene")));
+  state.options.motifs.forEach(n => el("gridMotif").appendChild(swatch(n, "motif")));
 
   el("mRandom").onclick = () => { S.polish.mode = "random"; render(); save(); };
   el("mPinned").onclick = () => {
     S.polish.mode = "pinned";
     S.polish.palette ||= pal()[0] || state.options.palettes[0].name;
+    setFocus(S.polish.palette);
     render(); save();
   };
   document.querySelectorAll("[data-bulk]").forEach(b => b.onclick = () => {
     const k = b.dataset.bulk;
     if(k === "pal-all") S.polish.palettes = state.options.palettes.map(p => p.name);
+    // Clearing the palette pool restores the built-in rotation rather than
+    // leaving the picker with nothing to draw from.
     if(k === "pal-none") S.polish.palettes = [];
     if(k === "scn-all") S.polish.scenes = [...state.options.scenes];
     if(k === "scn-none") S.polish.scenes = [];
+    if(k === "mot-all") S.polish.motifs = [...state.options.motifs];
+    if(k === "mot-none") S.polish.motifs = [];
     render(); save();
   });
 
   render();
   if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches){
-    setInterval(() => { if(!pinned()){ live++; paintHero(); render0(); } }, 3200);
+    setInterval(() => { if(!pinned()){ live++; paintHero(); rollCaption(); } }, 3200);
   }
 }
+
 // caption-only refresh, so the rolling hero does not re-post the config
-function render0(){
-  el("capPalette").textContent = pal()[live % (pal().length||1)] || "any";
+function rollCaption(){
+  const roll = effectivePalettes();
+  el("capPalette").textContent = roll[live % (roll.length||1)] || "any";
 }
 boot();
 </script>

@@ -29,17 +29,45 @@ All notable changes to this project are documented here. The format follows
   auth by design; `--host` widens it, `--port 0` takes any free port, and
   `--print-url` prints the URL as JSON without serving. No new dependencies: the
   HTTP handling is hand-rolled on `std::net`.
+- **Pattern backdrops**, a third family alongside the gradients and the space
+  scenes: woven and ruled geometry drawn from the seed. Six palettes
+  (`tartan-moss`, `oxford-navy`, `blueprint`, `ledger-cream`, `picnic-red`,
+  `workshop-ochre`) and twelve motifs (`plaid`, `gingham`, `stripe`, `rule`,
+  `grid`, `diagonal`, `chevron`, `dot`, `crosshatch`, `weave`, `herringbone`,
+  `houndstooth`) via a new `--motif` on `capture`, `polish`, and both MCP tools,
+  plus `motif` and `motifs` in the config. Nothing is a tiled bitmap: plaid
+  builds a mirrored tartan sett, houndstooth comes off a 2/2 twill.
+- **Ten more palettes.** Four deep-space (`eagle-pillars`, `crab-remnant`,
+  `tarantula-web`, `sombrero-dust`), bringing the default random rotation to
+  twelve, and four gradients (`sea-glass`, `peach-dusk`, `ink-wash`,
+  `citrus-noon`). With the two axes that is 273 backdrops before the seed varies
+  anything.
+- **The studio shows the cross product.** Hovering a backdrop redraws the scene
+  or motif sheet on it, so the 192 space combinations and 72 pattern
+  combinations are browsable instead of implied by two flat lists.
 - **`polish::render_backdrop`** paints a backdrop at any size with no card on
   top. A finished card is only about 4% backdrop by width, so whole cards are
   indistinguishable from each other as swatches; the picker needs the sky on its
   own.
 
 ### Changed
+- **Backdrop selection now scores palette names against the seed instead of
+  indexing by position.** Indexing made the pool length the modulus, so adding
+  one palette reshuffled what every existing seed rendered. Scoring by name
+  means a new palette only takes the seeds it actually wins, which is what makes
+  the table safe to grow. This is a one-time break: a given `--style-seed`
+  renders a different backdrop than it did in 0.7.0. Reproducibility holds from
+  here on, and the same seed with the same pool is still exact.
 - A named random pool can reach the gradient palettes again. Random styling
   still defaults to space palettes only, but a palette listed in the config pool
   is drawn from regardless of its kind.
 - An unreadable or malformed config is reported in the result's `warnings` and
   falls back to defaults instead of failing the capture.
+
+### Fixed
+- `cloche studio` served one connection at a time, so a browser pre-opening a
+  socket without sending a request wedged the accept loop and the page loaded no
+  swatches. Connections are handled per thread with read and write deadlines.
 - Relicensed from Apache-2.0 to MIT. `LICENSE`, `Cargo.toml`, `CONTRIBUTING.md`,
   and the README badge now agree on MIT.
 - Capture JSON renames `outputDir` to `outDir` to match flat `--out-dir` /

@@ -56,12 +56,17 @@ pub struct PolishPrefs {
     pub palette: Option<String>,
     /// Scene applied when `mode` is `pinned`. Space palettes only.
     pub scene: Option<String>,
+    /// Motif applied when `mode` is `pinned`. Pattern palettes only.
+    pub motif: Option<String>,
     /// Palettes the random picker may choose from. Empty means the built-in
     /// pool (every space palette).
     pub palettes: Vec<String>,
     /// Scenes the random picker may choose from. Empty leaves the scene to the
     /// seed's own pick inside the space renderer.
     pub scenes: Vec<String>,
+    /// Motifs the random picker may choose from. Empty leaves the motif to the
+    /// seed's own pick inside the pattern renderer.
+    pub motifs: Vec<String>,
 }
 
 /// Where the preferences file lives on this machine.
@@ -152,12 +157,14 @@ pub fn resolve_style(
     seed: Option<u64>,
     palette: Option<&str>,
     scene: Option<&str>,
+    motif: Option<&str>,
     warnings: &mut Vec<String>,
 ) -> polish::PresentationStyle {
     let seed = seed.unwrap_or_else(polish::random_seed);
     let pinned = prefs.mode == PolishMode::Pinned;
     let palette = palette.or_else(|| pinned.then_some(prefs.palette.as_deref()).flatten());
     let scene = scene.or_else(|| pinned.then_some(prefs.scene.as_deref()).flatten());
+    let motif = motif.or_else(|| pinned.then_some(prefs.motif.as_deref()).flatten());
 
     let palettes = keep_known(
         &prefs.palettes,
@@ -166,13 +173,14 @@ pub fn resolve_style(
         warnings,
     );
     let scenes = keep_known(&prefs.scenes, &polish::scene_names(), "scene", warnings);
+    let motifs = keep_known(&prefs.motifs, &polish::motif_names(), "motif", warnings);
 
     let mut style = match palette {
         Some(name) => polish::style_with_palette(seed, name).unwrap_or_else(|| {
             warnings.push(format!("unknown palette: {name}"));
-            polish::style_from_seed_in_pool(seed, &palettes, &scenes)
+            polish::style_from_seed_in_pool(seed, &palettes, &scenes, &motifs)
         }),
-        None => polish::style_from_seed_in_pool(seed, &palettes, &scenes),
+        None => polish::style_from_seed_in_pool(seed, &palettes, &scenes, &motifs),
     };
 
     if let Some(name) = scene {
@@ -183,6 +191,17 @@ pub fn resolve_style(
                 style.palette_name
             )),
             None => warnings.push(format!("unknown scene: {name}")),
+        }
+    }
+
+    if let Some(name) = motif {
+        match polish::motif_from_name(name) {
+            Some(kind) if style.is_pattern() => style.motif = Some(kind),
+            Some(_) => warnings.push(format!(
+                "motif {name} ignored: palette {} is not a pattern",
+                style.palette_name
+            )),
+            None => warnings.push(format!("unknown motif: {name}")),
         }
     }
     style
@@ -264,8 +283,10 @@ mod tests {
                 mode: PolishMode::Pinned,
                 palette: Some("violet-haze".to_string()),
                 scene: Some("jwst".to_string()),
+                motif: Some("plaid".to_string()),
                 palettes: vec!["orion-emission".to_string()],
                 scenes: vec!["alma".to_string()],
+                motifs: vec!["grid".to_string()],
             },
         };
         save_to(&path, &config).expect("save");
@@ -314,6 +335,7 @@ mod tests {
             Some(7),
             Some("aurora-teal"),
             None,
+            None,
             &mut warnings,
         );
         assert_eq!(style.palette_name, "aurora-teal");
@@ -326,6 +348,7 @@ mod tests {
         let style = resolve_style(
             &pinned(Some("violet-haze"), None),
             Some(7),
+            None,
             None,
             None,
             &mut warnings,
@@ -341,7 +364,7 @@ mod tests {
             ..PolishPrefs::default()
         };
         let mut warnings = Vec::new();
-        let style = resolve_style(&prefs, Some(7), None, None, &mut warnings);
+        let style = resolve_style(&prefs, Some(7), None, None, None, &mut warnings);
         assert_eq!(style.palette_name, polish::style_from_seed(7).palette_name);
         assert!(warnings.is_empty(), "warnings: {warnings:?}");
     }
@@ -354,7 +377,7 @@ mod tests {
         };
         for seed in 0..40u64 {
             let mut warnings = Vec::new();
-            let style = resolve_style(&prefs, Some(seed), None, None, &mut warnings);
+            let style = resolve_style(&prefs, Some(seed), None, None, None, &mut warnings);
             assert!(
                 prefs.palettes.contains(&style.palette_name),
                 "seed {seed} escaped the pool with {}",
@@ -371,6 +394,7 @@ mod tests {
             Some(7),
             None,
             None,
+            None,
             &mut warnings,
         );
         assert_eq!(space.scene, polish::scene_from_name("jwst"));
@@ -380,6 +404,7 @@ mod tests {
         let gradient = resolve_style(
             &pinned(Some("aurora-teal"), Some("jwst")),
             Some(7),
+            None,
             None,
             None,
             &mut warnings,
@@ -397,7 +422,7 @@ mod tests {
             ..PolishPrefs::default()
         };
         let mut warnings = Vec::new();
-        let style = resolve_style(&prefs, Some(7), None, None, &mut warnings);
+        let style = resolve_style(&prefs, Some(7), None, None, None, &mut warnings);
         assert_eq!(style.palette_name, "orion-emission");
         assert_eq!(warnings.len(), 2, "warnings: {warnings:?}");
         assert!(warnings.iter().any(|w| w.contains("not-a-palette")));

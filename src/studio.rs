@@ -18,6 +18,7 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use clap::Args;
 use image::RgbaImage;
@@ -34,6 +35,9 @@ const MAX_SIZE: u32 = 2048;
 /// One request should not be able to hold the accept loop open forever.
 const MAX_HEADER_BYTES: usize = 16 * 1024;
 const MAX_BODY_BYTES: usize = 256 * 1024;
+/// Browsers pre-open sockets and then sit on them without sending anything.
+/// Without a read deadline one of those idles wedges the whole server.
+const IO_TIMEOUT: Duration = Duration::from_secs(10);
 
 const PAGE: &str = include_str!("studio.html");
 
@@ -84,11 +88,16 @@ pub fn run(args: StudioArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
 
     for stream in listener.incoming() {
         match stream {
-            // One bad client should not end the session.
+            // A thread per connection: the page asks for dozens of swatches at
+            // once and browsers open several sockets in parallel, so serving
+            // them strictly in turn makes the page load one image at a time.
+            // One bad client should not end the session either.
             Ok(stream) => {
-                if let Err(err) = serve(stream) {
-                    eprintln!("studio: {err}");
-                }
+                std::thread::spawn(move || {
+                    if let Err(err) = serve(stream) {
+                        eprintln!("studio: {err}");
+                    }
+                });
             }
             Err(err) => eprintln!("studio: connection failed: {err}"),
         }
@@ -119,12 +128,17 @@ impl Response {
 }
 
 fn serve(mut stream: TcpStream) -> Result<(), String> {
+    // Deadlines on both directions so a silent or stalled peer releases the
+    // thread instead of holding it for the life of the process.
+    let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
+    let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
     let mut reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
 
     let mut line = String::new();
-    reader
-        .read_line(&mut line)
-        .map_err(|e| format!("read request line: {e}"))?;
+    if reader.read_line(&mut line).map_err(|e| e.to_string())? == 0 {
+        // Peer opened a socket and never spoke. Nothing to answer.
+        return Ok(());
+    }
     let Some((method, path, query)) = parse_request_line(&line) else {
         return write_response(&mut stream, Response::error(400, "malformed request line"));
     };
@@ -282,6 +296,10 @@ fn state_value() -> serde_json::Value {
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
+            motifs: polish::motif_names()
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
         },
         sample: newest_capture(),
         warnings,
@@ -316,6 +334,12 @@ fn save_body(body: &[u8]) -> Result<(), String> {
             return Err(format!("unknown scene: {name}"));
         }
     }
+    let known_motif: Vec<&str> = polish::motif_names();
+    for name in prefs.motifs.iter().chain(prefs.motif.iter()) {
+        if !known_motif.contains(&name.as_str()) {
+            return Err(format!("unknown motif: {name}"));
+        }
+    }
     let path = config::path();
     let (mut stored, _) = config::load_from(&path);
     stored.polish = prefs;
@@ -333,6 +357,11 @@ fn style_from_query(query: &str) -> polish::PresentationStyle {
         && style.is_space()
     {
         style.scene = Some(scene);
+    }
+    if let Some(motif) = query_get(query, "motif").and_then(|n| polish::motif_from_name(&n))
+        && style.is_pattern()
+    {
+        style.motif = Some(motif);
     }
     style
 }
@@ -388,6 +417,52 @@ fn write_response(stream: &mut TcpStream, response: Response) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn concurrent_requests_all_get_answered() {
+        // Regression: the accept loop used to be strictly serial, so a browser
+        // pre-opening a socket without sending a request wedged the server and
+        // the page loaded no swatches at all.
+        use std::io::Read as _;
+        use std::io::Write as _;
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().take(5).flatten() {
+                std::thread::spawn(move || {
+                    let _ = serve(stream);
+                });
+            }
+        });
+
+        // An idle socket, opened first and never written to, exactly like a
+        // browser pre-connect.
+        let _idle = TcpStream::connect(("127.0.0.1", port)).expect("idle connect");
+
+        for _ in 0..3 {
+            let mut client = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+            client
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .expect("timeout");
+            client
+                .write_all(b"GET /api/state HTTP/1.1\r\nHost: x\r\n\r\n")
+                .expect("write");
+            let mut response = Vec::new();
+            client.read_to_end(&mut response).expect("read");
+            let head = String::from_utf8_lossy(&response);
+            assert!(
+                head.starts_with("HTTP/1.1 200"),
+                "got: {}",
+                &head[..40.min(head.len())]
+            );
+        }
+    }
+
+    #[test]
+    fn an_empty_connection_is_not_an_error() {
+        // read_line returning 0 means the peer closed without speaking.
+        assert!(parse_request_line("").is_none());
+    }
 
     #[test]
     fn request_line_splits_path_from_query() {
@@ -476,6 +551,20 @@ mod tests {
         let a = backdrop_png("palette=ember-glow&seed=3&w=24&h=18").expect("png");
         let b = backdrop_png("palette=aurora-teal&seed=3&w=24&h=18").expect("png");
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn a_motif_is_ignored_on_a_non_pattern_palette() {
+        let style = style_from_query("palette=orion-emission&motif=plaid&seed=1");
+        assert_eq!(style.motif, None);
+        let woven = style_from_query("palette=tartan-moss&motif=plaid&seed=1");
+        assert_eq!(woven.motif, polish::motif_from_name("plaid"));
+    }
+
+    #[test]
+    fn posting_an_unknown_motif_is_refused() {
+        let err = save_body(br#"{"motifs":["paisley"]}"#).expect_err("rejected");
+        assert!(err.contains("paisley"), "{err}");
     }
 
     #[test]
