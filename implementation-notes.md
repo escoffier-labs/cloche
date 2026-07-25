@@ -440,3 +440,12 @@ collides (every process starts at 0). Stem is now
 same-second captures; the counter covers repeated in-process calls and keeps
 the uniqueness regression test deterministic. Millis alone was rejected
 because sub-ms loops can still collide.
+
+## Codex payload flat out-dirs (2026-07-25)
+
+`codex-payload` directory input only joined `metadata.json`, so the default
+flat layout (`<stem>.json` in the out-dir) made the README quickstart fail.
+Resolution lives in `captures::resolve_metadata_path`: prefer legacy
+`metadata.json`, else newest `cloche-shot*.json` / `appshot*.json` by
+`created_at`. Picked newest over hard errors on ambiguity so a re-used demo
+out-dir keeps working.

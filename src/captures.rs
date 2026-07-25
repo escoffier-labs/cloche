@@ -96,3 +96,54 @@ pub fn read_metadata_file(path: &Path) -> Result<AppshotResult, Box<dyn std::err
 pub fn read_metadata(capture_dir: &Path) -> Result<AppshotResult, Box<dyn std::error::Error>> {
     read_metadata_file(&capture_dir.join("metadata.json"))
 }
+
+/// Resolve a capture path to its metadata sidecar.
+///
+/// Accepts:
+/// - a flat `<stem>.json` file
+/// - a legacy capture directory containing `metadata.json`
+/// - a flat-layout out-dir containing `cloche-shot*.json` / `appshot*.json`
+///   sidecars (newest `created_at` wins)
+pub fn resolve_metadata_path(capture: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if capture.is_file() {
+        return Ok(capture.to_path_buf());
+    }
+    if !capture.is_dir() {
+        return Err(format!("capture path does not exist: {}", capture.display()).into());
+    }
+
+    let legacy = capture.join("metadata.json");
+    if legacy.is_file() {
+        return Ok(legacy);
+    }
+
+    let mut candidates = Vec::new();
+    let entries = std::fs::read_dir(capture)?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !name.ends_with(".json") {
+            continue;
+        }
+        if !name.starts_with("cloche-shot") && !name.starts_with("appshot") {
+            continue;
+        }
+        if let Ok(metadata) = read_metadata_file(&path) {
+            candidates.push((metadata.created_at, path));
+        }
+    }
+    candidates.sort_by_key(|(created_at, _)| std::cmp::Reverse(*created_at));
+    candidates
+        .into_iter()
+        .next()
+        .map(|(_, path)| path)
+        .ok_or_else(|| {
+            format!(
+                "no capture metadata in {}: expected metadata.json or a cloche-shot*.json sidecar",
+                capture.display()
+            )
+            .into()
+        })
+}

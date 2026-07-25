@@ -4,7 +4,7 @@ use std::process::ExitCode;
 use clap::Args;
 use serde_json::json;
 
-use crate::contract::AppshotResult;
+use crate::captures;
 use crate::contract::ImageDetail;
 use crate::util;
 
@@ -12,8 +12,9 @@ use crate::util;
 pub struct CodexPayloadArgs {
     #[arg(long)]
     pub thread_id: String,
-    /// A capture's flat `<stem>.json` sidecar, or a legacy capture directory
-    /// (its `metadata.json` is read).
+    /// A flat `<stem>.json` sidecar, a flat-layout out-dir (newest
+    /// `cloche-shot*.json` / `appshot*.json` wins), or a legacy capture
+    /// directory (`metadata.json`).
     #[arg(value_name = "CAPTURE")]
     pub capture_dir: PathBuf,
     #[arg(long, default_value = "Cloche shot attached.")]
@@ -37,14 +38,8 @@ pub fn payload(args: CodexPayloadArgs) -> Result<ExitCode, Box<dyn std::error::E
 /// Pure payload assembly: reads capture metadata and returns the `turn/start`
 /// JSON envelope without printing. Split out so the wire contract is testable.
 fn build_payload(args: &CodexPayloadArgs) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    // Accept either a flat `<stem>.json` sidecar or a legacy capture directory.
-    let metadata_path = if args.capture_dir.is_dir() {
-        args.capture_dir.join("metadata.json")
-    } else {
-        args.capture_dir.clone()
-    };
-    let metadata_bytes = util::read(&metadata_path)?;
-    let metadata: AppshotResult = serde_json::from_slice(&metadata_bytes)?;
+    let metadata_path = captures::resolve_metadata_path(&args.capture_dir)?;
+    let metadata = captures::read_metadata_file(&metadata_path)?;
     if !metadata.ok {
         return Err(
             "capture metadata is not successful; refusing to emit a Codex image payload".into(),
@@ -199,6 +194,57 @@ mod tests {
         let payload = build_payload(&a).expect("payload");
         assert_eq!(payload["method"], "turn/start");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn flat_layout_directory_finds_stem_json() {
+        // Default captures since 0.6.0 write `<stem>.json` into the out-dir, not
+        // `metadata.json`. The README quickstart passes that directory.
+        let dir = temp_dir("flat-dir");
+        write_flat_fixture(&dir, "cloche-shot-20260725T120000Z-1-0", chrono::Utc::now());
+        let payload = build_payload(&args(&dir)).expect("payload from flat out-dir");
+        assert_eq!(payload["method"], "turn/start");
+        let input = payload["params"]["input"].as_array().expect("input");
+        assert_eq!(input.last().expect("image")["type"], "localImage");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn flat_layout_directory_picks_newest_stem() {
+        let dir = temp_dir("flat-newest");
+        let older = chrono::Utc::now() - chrono::Duration::seconds(60);
+        let newer = chrono::Utc::now();
+        write_flat_fixture(&dir, "cloche-shot-old", older);
+        write_flat_fixture(&dir, "cloche-shot-new", newer);
+        let path = captures::resolve_metadata_path(&dir).expect("resolve");
+        assert!(
+            path.ends_with("cloche-shot-new.json"),
+            "expected newest stem, got {}",
+            path.display()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn write_flat_fixture(dir: &Path, stem: &str, created_at: chrono::DateTime<chrono::Utc>) {
+        let image_path = dir.join(format!("{stem}.png"));
+        std::fs::write(&image_path, b"png").expect("write image");
+        let metadata = AppshotResult {
+            ok: true,
+            version: "0.0.0".to_string(),
+            created_at,
+            target: CaptureTarget::Active,
+            backend: None,
+            output_dir: dir.to_path_buf(),
+            image: Some(image_info(&image_path)),
+            presentation_image: None,
+            presentation_style: None,
+            window: None,
+            text: TextInfo::default(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        };
+        let bytes = serde_json::to_vec_pretty(&metadata).expect("serialize metadata");
+        std::fs::write(dir.join(format!("{stem}.json")), bytes).expect("write flat sidecar");
     }
 
     #[test]
