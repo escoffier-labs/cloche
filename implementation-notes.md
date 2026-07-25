@@ -462,6 +462,14 @@ Resolution lives in `captures::resolve_metadata_path`: rank legacy
 shadow a newer flat capture. Picked newest over hard errors on ambiguity so a
 re-used demo out-dir keeps working.
 
+## Window match + preview path tests (#25) (2026-07-25)
+
+Extracted pure `parse_wmctrl_output` / `find_window_among` / `window_matches`
+so case-insensitive title/app matching and the no-match path are unit-tested
+without shelling out to `wmctrl`. Preview coverage hits `pick_preview_image`
+(card vs raw) and `resolve_preview_path` (legacy dir, flat sidecar, direct
+image) with fixture metadata on disk.
+
 ## Docs drift sweep (#23) (2026-07-25)
 
 Single PR aligned README Modes/Output Files/Command Reference, ROADMAP
