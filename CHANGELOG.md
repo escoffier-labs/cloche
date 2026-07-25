@@ -9,8 +9,26 @@ All notable changes to this project are documented here. The format follows
 ### Added
 - `cloche codex-payload --card` attaches the polished presentation image instead
   of the default raw capture frame.
+- **Persisted backdrop preferences.** `cloche config` stores styling choices in
+  `~/.config/cloche/config.json` (`$XDG_CONFIG_HOME` / `%APPDATA%` honored,
+  `CLOCHE_CONFIG` overrides), and both `cloche capture` and `cloche polish` read
+  them with no flags. Pin a palette and scene with
+  `cloche config set --mode pinned --palette orion-emission --scene jwst`, or
+  keep the picker random over a chosen subset with
+  `cloche config set --palettes carina-hubble,pleiades-reflection --scenes alma,veil`.
+  `cloche config options` lists every palette (with its gradient/space kind) and
+  scene; `cloche config show` prints the effective preferences.
+- **`cloche capture --palette` and `--scene`**, matching the flags `polish`
+  already had, plus the same two arguments on the MCP `capture` tool. Explicit
+  flags override the persisted config.
+- **`cloche schema --for config`** emits the JSON contract for the new command.
 
 ### Changed
+- A named random pool can reach the gradient palettes again. Random styling
+  still defaults to space palettes only, but a palette listed in the config pool
+  is drawn from regardless of its kind.
+- An unreadable or malformed config is reported in the result's `warnings` and
+  falls back to defaults instead of failing the capture.
 - Relicensed from Apache-2.0 to MIT. `LICENSE`, `Cargo.toml`, `CONTRIBUTING.md`,
   and the README badge now agree on MIT.
 - Capture JSON renames `outputDir` to `outDir` to match flat `--out-dir` /

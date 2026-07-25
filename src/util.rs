@@ -124,6 +124,15 @@ pub fn env_var(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|value| !value.is_empty())
 }
 
+/// The user's home directory: `HOME` on Unix, `USERPROFILE` on Windows.
+/// Falls back to the working directory so callers always have a base to join.
+pub fn home_dir() -> PathBuf {
+    env_var("HOME")
+        .or_else(|| env_var("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
 pub fn create_dir_all(path: &Path) -> Result<(), AppError> {
     std::fs::create_dir_all(path).map_err(|source| AppError::Io {
         path: path.to_path_buf(),

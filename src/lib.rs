@@ -4,6 +4,7 @@ mod captures;
 mod cli;
 mod clipboard;
 mod codex;
+mod config;
 mod contract;
 mod design;
 mod html;
@@ -33,6 +34,7 @@ pub fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
         Command::Latest(args) => cli::latest(args),
         Command::Preview(args) => cli::preview(args),
         Command::Schema(args) => cli::schema(args),
+        Command::Config(args) => cli::config(args),
         Command::CodexPayload(args) => codex::payload(args),
         Command::Mcp(args) => mcp::run(args),
         Command::Setup(args) => setup::run(args),

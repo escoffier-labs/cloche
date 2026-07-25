@@ -15,6 +15,7 @@ use crate::captures::CaptureSummary;
 use crate::captures::find_captures;
 use crate::captures::read_metadata;
 use crate::captures::read_metadata_file;
+use crate::config;
 use crate::contract::AppshotResult;
 use crate::contract::CaptureTarget;
 use crate::contract::ImageDetail;
@@ -49,6 +50,7 @@ pub enum Command {
     #[command(alias = "open")]
     Preview(PreviewArgs),
     Schema(SchemaArgs),
+    Config(ConfigArgs),
     CodexPayload(crate::codex::CodexPayloadArgs),
     Mcp(crate::mcp::McpArgs),
     Setup(crate::setup::SetupArgs),
@@ -186,6 +188,14 @@ pub struct CaptureArgs {
     pub detail: ImageDetail,
     #[arg(long, value_enum, default_value = "both")]
     pub presentation: PresentationMode,
+    /// Backdrop palette for the card; falls back to the persisted config, then
+    /// to a random pick. See `cloche config options` for the full list.
+    #[arg(long, value_parser = palette_name_parser())]
+    pub palette: Option<String>,
+    /// Pin the deep-space scene look (e.g. `jwst`, `alma`, `cmb`). Only applies
+    /// to space palettes.
+    #[arg(long, value_parser = scene_name_parser())]
+    pub scene: Option<String>,
     #[arg(long)]
     pub style_seed: Option<u64>,
     /// Copy the card (or the raw shot with --presentation raw) to the
@@ -264,6 +274,73 @@ pub enum SchemaTarget {
     Capture,
     Polish,
     ReelRender,
+    Config,
+}
+
+/// Read and edit the persisted styling preferences that `capture` and `polish`
+/// honor without flags.
+#[derive(Debug, Args)]
+pub struct ConfigArgs {
+    #[command(subcommand)]
+    pub command: ConfigCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigCommand {
+    /// Print the effective preferences and the file they came from.
+    Show,
+    /// Print every palette and scene the pickers accept.
+    Options,
+    /// Update the persisted preferences.
+    Set(ConfigSetArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ConfigSetArgs {
+    /// `random` draws from the pools below; `pinned` applies `--palette` and
+    /// `--scene` to every capture.
+    #[arg(long, value_enum)]
+    pub mode: Option<ConfigPolishMode>,
+    /// Palette to pin. Stored either way, applied only in `pinned` mode.
+    #[arg(long, value_parser = palette_name_parser())]
+    pub palette: Option<String>,
+    /// Scene to pin. Space palettes only.
+    #[arg(long, value_parser = scene_name_parser())]
+    pub scene: Option<String>,
+    /// Comma-separated palettes the random picker may choose from. Replaces the
+    /// stored pool.
+    #[arg(long, value_delimiter = ',', value_parser = palette_name_parser())]
+    pub palettes: Option<Vec<String>>,
+    /// Comma-separated scenes the random picker may choose from. Replaces the
+    /// stored pool.
+    #[arg(long, value_delimiter = ',', value_parser = scene_name_parser())]
+    pub scenes: Option<Vec<String>>,
+    /// Reset a preference to its default. Repeatable.
+    #[arg(long = "clear", value_enum)]
+    pub clear: Vec<ClearTarget>,
+    /// Output format; only `json` exists today.
+    #[arg(long, default_value = "json")]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
+pub enum ConfigPolishMode {
+    Random,
+    Pinned,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
+pub enum ClearTarget {
+    /// Drop the pinned palette.
+    Palette,
+    /// Drop the pinned scene.
+    Scene,
+    /// Empty the random palette pool, restoring every space palette.
+    Palettes,
+    /// Empty the random scene pool.
+    Scenes,
+    /// Reset every polish preference.
+    All,
 }
 
 /// Accepted for forward compatibility; every command prints JSON today, so
@@ -320,7 +397,10 @@ pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>
         args.presentation,
         PresentationMode::Card | PresentationMode::Both
     );
-    let mut warnings = Vec::new();
+    // Persisted styling preferences, loaded before the shot so a bad config
+    // surfaces as a warning on the capture that ignored it.
+    let (stored, mut warnings) = config::load();
+    let prefs = stored.polish;
     let mut errors = Vec::new();
     let mut backend = None;
     let mut window = None;
@@ -357,10 +437,13 @@ pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>
                     Ok(info) => {
                         if will_make_card {
                             let card_path = output_dir.join(format!("{stem}.png"));
-                            let style = args
-                                .style_seed
-                                .map(polish::style_from_seed)
-                                .unwrap_or_else(polish::random_style);
+                            let style = config::resolve_style(
+                                &prefs,
+                                args.style_seed,
+                                args.palette.as_deref(),
+                                args.scene.as_deref(),
+                                &mut warnings,
+                            );
                             match polish::render_codex_card(
                                 &image_path,
                                 &card_path,
@@ -428,7 +511,7 @@ pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>
 }
 
 pub fn polish(args: PolishArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
-    let result = run_polish(args);
+    let result = run_polish(args, &config::path());
     print_json(&result)?;
     Ok(if result.ok {
         ExitCode::SUCCESS
@@ -830,8 +913,11 @@ fn inferred_reel_duration_ms(cues: Option<&serde_json::Value>) -> u64 {
     max_end.max(6_000)
 }
 
-fn run_polish(args: PolishArgs) -> crate::contract::PolishResult {
-    let mut warnings = Vec::new();
+/// `config_path` is threaded in rather than resolved here so tests never depend
+/// on the preferences file of whoever runs them.
+fn run_polish(args: PolishArgs, config_path: &Path) -> crate::contract::PolishResult {
+    let (stored, mut warnings) = config::load_from(config_path);
+    let prefs = stored.polish;
     let mut errors = Vec::new();
     let mut input_info = None;
     let mut card_info = None;
@@ -847,51 +933,32 @@ fn run_polish(args: PolishArgs) -> crate::contract::PolishResult {
             card_path.display()
         ));
     } else {
-        let seed = args.style_seed.unwrap_or_else(polish::random_seed);
-        // The palette value is pre-validated by clap, so a miss here is a bug.
-        let style = match args.palette.as_deref() {
-            Some(name) => polish::style_with_palette(seed, name)
-                .ok_or_else(|| format!("unknown palette: {name}")),
-            None => Ok(polish::style_from_seed(seed)),
-        };
-        match style {
-            Ok(mut style) => {
-                // Scene name is pre-validated by clap; a miss here is a bug.
-                if let Some(name) = args.scene.as_deref() {
-                    match polish::scene_from_name(name) {
-                        Some(scene) => {
-                            if style.is_space() {
-                                style.scene = Some(scene);
-                            } else {
-                                warnings.push(format!(
-                                    "--scene {name} ignored: palette {} is not a space scene",
-                                    style.palette_name
-                                ));
-                            }
-                        }
-                        None => warnings.push(format!("unknown scene: {name}")),
-                    }
+        // Flag values are pre-validated by clap; the config's are not, so
+        // `resolve_style` reports anything it had to ignore.
+        let style = config::resolve_style(
+            &prefs,
+            args.style_seed,
+            args.palette.as_deref(),
+            args.scene.as_deref(),
+            &mut warnings,
+        );
+        let parent_ready = card_path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .map_or(Ok(()), util::create_dir_all);
+        match parent_ready.map_err(|err| err.to_string()).and_then(|()| {
+            polish::render_codex_card(&args.input, &card_path, None, &style)
+                .map_err(|err| err.to_string())
+        }) {
+            Ok(()) => {
+                style_info = Some(style.info());
+                match image_info(&args.input, ImageDetail::Original) {
+                    Ok(info) => input_info = Some(info),
+                    Err(err) => warnings.push(err.to_string()),
                 }
-                let parent_ready = card_path
-                    .parent()
-                    .filter(|parent| !parent.as_os_str().is_empty())
-                    .map_or(Ok(()), util::create_dir_all);
-                match parent_ready.map_err(|err| err.to_string()).and_then(|()| {
-                    polish::render_codex_card(&args.input, &card_path, None, &style)
-                        .map_err(|err| err.to_string())
-                }) {
-                    Ok(()) => {
-                        style_info = Some(style.info());
-                        match image_info(&args.input, ImageDetail::Original) {
-                            Ok(info) => input_info = Some(info),
-                            Err(err) => warnings.push(err.to_string()),
-                        }
-                        match image_info(&card_path, ImageDetail::Original) {
-                            Ok(info) => card_info = Some(info),
-                            Err(err) => errors.push(err.to_string()),
-                        }
-                    }
-                    Err(err) => errors.push(err),
+                match image_info(&card_path, ImageDetail::Original) {
+                    Ok(info) => card_info = Some(info),
+                    Err(err) => errors.push(err.to_string()),
                 }
             }
             Err(err) => errors.push(err),
@@ -1070,8 +1137,117 @@ fn schema_value(target: SchemaTarget) -> serde_json::Value {
         SchemaTarget::Capture => schema_for!(AppshotResult),
         SchemaTarget::Polish => schema_for!(crate::contract::PolishResult),
         SchemaTarget::ReelRender => schema_for!(crate::contract::ReelRenderResult),
+        SchemaTarget::Config => schema_for!(crate::contract::ConfigResult),
     };
     serde_json::to_value(schema).expect("schema serializes")
+}
+
+pub fn config(args: ConfigArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let result = run_config(args.command, &config::path());
+    print_json(&result)?;
+    Ok(if result.ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    })
+}
+
+fn run_config(command: ConfigCommand, path: &Path) -> crate::contract::ConfigResult {
+    let (mut stored, mut warnings) = config::load_from(path);
+    let mut errors = Vec::new();
+    let mut options = None;
+
+    match command {
+        ConfigCommand::Show => {}
+        ConfigCommand::Options => options = Some(style_options()),
+        ConfigCommand::Set(args) => {
+            apply_config_set(&mut stored.polish, &args);
+            // A pinned scene on a gradient palette never renders, so say so at
+            // the moment it is stored rather than on every later capture.
+            if let Some(warning) = pinned_scene_conflict(&stored.polish) {
+                warnings.push(warning);
+            }
+            if let Err(err) = config::save_to(path, &stored) {
+                errors.push(err.to_string());
+            }
+        }
+    }
+
+    crate::contract::ConfigResult {
+        ok: errors.is_empty(),
+        version: VERSION.to_string(),
+        created_at: Utc::now(),
+        path: path.to_path_buf(),
+        exists: path.exists(),
+        config: stored,
+        options,
+        warnings,
+        errors,
+    }
+}
+
+fn apply_config_set(prefs: &mut config::PolishPrefs, args: &ConfigSetArgs) {
+    // Clears run first so `--clear all --palette x` reads left to right: reset,
+    // then apply what was named.
+    for target in &args.clear {
+        match target {
+            ClearTarget::Palette => prefs.palette = None,
+            ClearTarget::Scene => prefs.scene = None,
+            ClearTarget::Palettes => prefs.palettes.clear(),
+            ClearTarget::Scenes => prefs.scenes.clear(),
+            ClearTarget::All => *prefs = config::PolishPrefs::default(),
+        }
+    }
+    if let Some(mode) = args.mode {
+        prefs.mode = match mode {
+            ConfigPolishMode::Random => config::PolishMode::Random,
+            ConfigPolishMode::Pinned => config::PolishMode::Pinned,
+        };
+    }
+    if let Some(palette) = args.palette.clone() {
+        prefs.palette = Some(palette);
+    }
+    if let Some(scene) = args.scene.clone() {
+        prefs.scene = Some(scene);
+    }
+    if let Some(palettes) = args.palettes.clone() {
+        prefs.palettes = palettes;
+    }
+    if let Some(scenes) = args.scenes.clone() {
+        prefs.scenes = scenes;
+    }
+}
+
+/// A pinned scene only renders behind a space palette; pairing it with a
+/// gradient silently drops the scene.
+fn pinned_scene_conflict(prefs: &config::PolishPrefs) -> Option<String> {
+    let scene = prefs.scene.as_deref()?;
+    let palette = prefs.palette.as_deref()?;
+    let is_space = polish::style_with_palette(0, palette)
+        .map(|style| style.is_space())
+        .unwrap_or(true);
+    if is_space {
+        return None;
+    }
+    Some(format!(
+        "scene {scene} will be ignored while palette {palette} is pinned: it is not a space scene"
+    ))
+}
+
+fn style_options() -> crate::contract::StyleOptions {
+    crate::contract::StyleOptions {
+        palettes: polish::palette_catalog()
+            .into_iter()
+            .map(|(name, kind)| crate::contract::PaletteOption {
+                name: name.to_string(),
+                kind: kind.to_string(),
+            })
+            .collect(),
+        scenes: polish::scene_names()
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -1145,6 +1321,28 @@ mod tests {
         dir
     }
 
+    /// Polish against a config path that does not exist, so the run sees the
+    /// built-in defaults regardless of what the developer has pinned.
+    fn run_polish_defaults(args: PolishArgs) -> crate::contract::PolishResult {
+        run_polish(args, Path::new("/nonexistent/cloche/config.json"))
+    }
+
+    fn config_set(args: ConfigSetArgs, path: &Path) -> crate::contract::ConfigResult {
+        run_config(ConfigCommand::Set(args), path)
+    }
+
+    fn empty_set_args() -> ConfigSetArgs {
+        ConfigSetArgs {
+            mode: None,
+            palette: None,
+            scene: None,
+            palettes: None,
+            scenes: None,
+            clear: Vec::new(),
+            format: OutputFormat::Json,
+        }
+    }
+
     fn write_test_image(path: &Path, width: u32, height: u32) {
         let image = image::RgbaImage::from_pixel(width, height, image::Rgba([180, 180, 180, 255]));
         image.save(path).expect("write test image");
@@ -1211,7 +1409,7 @@ mod tests {
         let dir = temp_dir("default-out");
         let input = dir.join("shot.png");
         write_test_image(&input, 320, 240);
-        let result = run_polish(PolishArgs {
+        let result = run_polish_defaults(PolishArgs {
             input: input.clone(),
             out: None,
             palette: None,
@@ -1240,7 +1438,7 @@ mod tests {
         let input = dir.join("input.png");
         write_test_image(&input, 200, 160);
         let out = dir.join("nested").join("styled.png");
-        let result = run_polish(PolishArgs {
+        let result = run_polish_defaults(PolishArgs {
             input,
             out: Some(out.clone()),
             palette: Some("aurora-teal".to_string()),
@@ -1258,11 +1456,185 @@ mod tests {
     }
 
     #[test]
+    fn polish_uses_the_pinned_palette_from_the_config() {
+        let dir = temp_dir("config-pin");
+        let config_path = dir.join("config.json");
+        config_set(
+            ConfigSetArgs {
+                mode: Some(ConfigPolishMode::Pinned),
+                palette: Some("aurora-teal".to_string()),
+                ..empty_set_args()
+            },
+            &config_path,
+        );
+        let input = dir.join("input.png");
+        write_test_image(&input, 120, 90);
+        let result = run_polish(
+            PolishArgs {
+                input,
+                out: None,
+                palette: None,
+                scene: None,
+                style_seed: Some(4),
+                format: OutputFormat::Json,
+            },
+            &config_path,
+        );
+        assert!(result.ok, "errors: {:?}", result.errors);
+        assert_eq!(
+            result.presentation_style.expect("style").palette,
+            "aurora-teal"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn polish_flag_overrides_the_pinned_config_palette() {
+        let dir = temp_dir("config-override");
+        let config_path = dir.join("config.json");
+        config_set(
+            ConfigSetArgs {
+                mode: Some(ConfigPolishMode::Pinned),
+                palette: Some("aurora-teal".to_string()),
+                ..empty_set_args()
+            },
+            &config_path,
+        );
+        let input = dir.join("input.png");
+        write_test_image(&input, 120, 90);
+        let result = run_polish(
+            PolishArgs {
+                input,
+                out: None,
+                palette: Some("ember-glow".to_string()),
+                scene: None,
+                style_seed: Some(4),
+                format: OutputFormat::Json,
+            },
+            &config_path,
+        );
+        assert!(result.ok, "errors: {:?}", result.errors);
+        assert_eq!(
+            result.presentation_style.expect("style").palette,
+            "ember-glow"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn config_show_reports_defaults_before_anything_is_written() {
+        let dir = temp_dir("config-show");
+        let path = dir.join("config.json");
+        let result = run_config(ConfigCommand::Show, &path);
+        assert!(result.ok, "errors: {:?}", result.errors);
+        assert!(!result.exists);
+        assert_eq!(result.config, config::ClocheConfig::default());
+        assert!(result.options.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn config_set_persists_and_reloads() {
+        let dir = temp_dir("config-set");
+        let path = dir.join("config.json");
+        let written = config_set(
+            ConfigSetArgs {
+                mode: Some(ConfigPolishMode::Pinned),
+                palettes: Some(vec![
+                    "orion-emission".to_string(),
+                    "milkyway-core".to_string(),
+                ]),
+                scenes: Some(vec!["alma".to_string()]),
+                ..empty_set_args()
+            },
+            &path,
+        );
+        assert!(written.ok, "errors: {:?}", written.errors);
+        assert!(written.exists);
+
+        let reloaded = run_config(ConfigCommand::Show, &path);
+        assert_eq!(reloaded.config.polish.mode, config::PolishMode::Pinned);
+        assert_eq!(
+            reloaded.config.polish.palettes,
+            vec!["orion-emission", "milkyway-core"]
+        );
+        assert_eq!(reloaded.config.polish.scenes, vec!["alma"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn config_set_clear_runs_before_the_values_on_the_same_line() {
+        let dir = temp_dir("config-clear");
+        let path = dir.join("config.json");
+        config_set(
+            ConfigSetArgs {
+                palette: Some("aurora-teal".to_string()),
+                scenes: Some(vec!["alma".to_string()]),
+                ..empty_set_args()
+            },
+            &path,
+        );
+        let result = config_set(
+            ConfigSetArgs {
+                clear: vec![ClearTarget::All],
+                palette: Some("ember-glow".to_string()),
+                ..empty_set_args()
+            },
+            &path,
+        );
+        assert_eq!(result.config.polish.palette.as_deref(), Some("ember-glow"));
+        assert!(result.config.polish.scenes.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn config_set_warns_when_a_pinned_scene_cannot_render() {
+        let dir = temp_dir("config-conflict");
+        let path = dir.join("config.json");
+        let result = config_set(
+            ConfigSetArgs {
+                mode: Some(ConfigPolishMode::Pinned),
+                palette: Some("aurora-teal".to_string()),
+                scene: Some("jwst".to_string()),
+                ..empty_set_args()
+            },
+            &path,
+        );
+        assert!(result.ok, "errors: {:?}", result.errors);
+        assert_eq!(result.warnings.len(), 1, "warnings: {:?}", result.warnings);
+        assert!(result.warnings[0].contains("not a space scene"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn config_options_lists_every_palette_and_scene() {
+        let dir = temp_dir("config-options");
+        let path = dir.join("config.json");
+        let result = run_config(ConfigCommand::Options, &path);
+        let options = result.options.expect("options");
+        assert_eq!(options.palettes.len(), polish::palette_names().len());
+        assert_eq!(options.scenes, polish::scene_names());
+        assert!(
+            options
+                .palettes
+                .iter()
+                .any(|option| option.name == "aurora-teal" && option.kind == "gradient")
+        );
+        assert!(
+            options
+                .palettes
+                .iter()
+                .any(|option| option.name == "orion-emission" && option.kind == "space")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn polish_rejects_non_png_output() {
         let dir = temp_dir("bad-out");
         let input = dir.join("input.png");
         write_test_image(&input, 64, 64);
-        let result = run_polish(PolishArgs {
+        let result = run_polish_defaults(PolishArgs {
             input,
             out: Some(dir.join("card.jpg")),
             palette: None,
@@ -1298,6 +1670,15 @@ mod tests {
     }
 
     #[test]
+    fn schema_for_config_describes_the_config_contract() {
+        let value = schema_value(SchemaTarget::Config);
+        let properties = value["properties"].as_object().expect("properties");
+        assert!(properties.contains_key("config"));
+        assert!(properties.contains_key("options"));
+        assert!(properties.contains_key("path"));
+    }
+
+    #[test]
     fn schema_for_reel_render_describes_the_reel_contract() {
         let value = schema_value(SchemaTarget::ReelRender);
         let properties = value["properties"].as_object().expect("properties");
@@ -1323,7 +1704,7 @@ mod tests {
         let input = dir.join("photo.jpg");
         let image = image::RgbImage::from_pixel(96, 64, image::Rgb([120, 60, 30]));
         image.save(&input).expect("write jpeg");
-        let result = run_polish(PolishArgs {
+        let result = run_polish_defaults(PolishArgs {
             input,
             out: None,
             palette: None,
@@ -1339,7 +1720,7 @@ mod tests {
     #[test]
     fn polish_reports_missing_input() {
         let dir = temp_dir("missing-input");
-        let result = run_polish(PolishArgs {
+        let result = run_polish_defaults(PolishArgs {
             input: dir.join("does-not-exist.png"),
             out: None,
             palette: None,

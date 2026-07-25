@@ -147,7 +147,57 @@ cloche polish shot.png --scene cmb --style-seed 42
 Scenes: `nebula`, `jwst`, `hubble`, `galaxy`, `alma`, `ring`, `butterfly`,
 `edge-on`, `sun`, `sdo`, `cluster`, `deep-field`, `lensing`, `veil`, `remnant`,
 `cmb`. `--scene` applies only to space palettes. On a gradient palette it is a
-no-op warning. The same flag is available on the MCP `polish` tool.
+no-op warning. `--palette` and `--scene` are available on `cloche capture`,
+`cloche polish`, and the matching MCP tools.
+
+## Backdrop Preferences
+
+Pinning a look on every invocation gets old, so `cloche config` stores the
+choice once and both `capture` and `polish` read it with no flags:
+
+```bash
+cloche config options                 # every palette (with kind) and scene
+cloche config show                    # current preferences and where they live
+
+# Always use one backdrop.
+cloche config set --mode pinned --palette orion-emission --scene jwst
+
+# Or keep it random, but only across the backdrops you like.
+cloche config set --mode random --palettes carina-hubble,pleiades-reflection
+cloche config set --scenes alma,veil
+
+cloche config set --clear all         # back to defaults
+```
+
+Preferences live at `~/.config/cloche/config.json`
+(`$XDG_CONFIG_HOME`/`%APPDATA%` are honored, and `CLOCHE_CONFIG` overrides the
+path outright):
+
+```json
+{
+  "polish": {
+    "mode": "random",
+    "palette": null,
+    "scene": null,
+    "palettes": ["carina-hubble", "pleiades-reflection"],
+    "scenes": ["alma", "veil"]
+  }
+}
+```
+
+- `mode` is `random` or `pinned`. `pinned` applies `palette`/`scene`; `random`
+  leaves them on file and draws from the pools instead.
+- `palettes` and `scenes` are the random pool. Empty means no constraint: every
+  space palette, and the seed's own scene pick. Naming a gradient palette here
+  is the only way to get the gradient look back into the random rotation.
+- Precedence is flag, then config, then the built-in random pick, so a one-off
+  `--palette` always wins.
+- A missing file means defaults. A malformed one is reported in the result's
+  `warnings` and falls back to defaults rather than costing you the capture.
+
+`cloche config show` and `cloche config options` emit the same JSON contract as
+every other command (`cloche schema --for config`), so a picker UI can read the
+menu and the current selection without parsing help text.
 
 ## Command Reference
 
@@ -161,11 +211,17 @@ cloche capture --target window --title Firefox --out-dir /tmp/cloche-demo --form
 cloche capture --target window --window-id 0x3400003 --out-dir /tmp/cloche-demo --format json
 cloche capture --target window --app firefox --out-dir /tmp/cloche-demo --format json
 cloche capture --target region --presentation both --clipboard --out-dir /tmp/cloche-demo --format json
+cloche capture --target active --palette orion-emission --scene jwst --out-dir /tmp/cloche-demo
 cloche polish /tmp/diff.png --format json
 cloche polish /tmp/diff.png --out /tmp/diff-card.png --palette ember-glow --scene jwst --style-seed 12345
 cloche reels render --input raw.mp4 --out demo.mp4 --cues cues.json --title "Create a project"
 cloche reels render --engine hyperframes --input raw.mp4 --out demo.mp4 --cues cues.json \
   --palette ember-glow --style-seed 12345 --fps 60 --width 1080 --height 1920 --workers 1
+cloche config show
+cloche config options
+cloche config set --mode pinned --palette orion-emission --scene jwst
+cloche config set --mode random --palettes carina-hubble,pleiades-reflection
+cloche config set --clear all
 cloche gallery --limit 10
 cloche gallery --root /tmp --html /tmp/cloche.html --title "My Shots" --open
 cloche latest
@@ -174,6 +230,7 @@ cloche open /tmp/cloche-demo
 cloche schema
 cloche schema --for polish
 cloche schema --for reel-render
+cloche schema --for config
 cloche codex-payload --thread-id THREAD_ID /tmp/cloche-demo
 cloche codex-payload --thread-id THREAD_ID --card /tmp/cloche-demo
 cloche mcp
