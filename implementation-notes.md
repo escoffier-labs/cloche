@@ -543,3 +543,39 @@ the config is the durable thing a UI would write to, so it lands first.
   for brand continuity with a still card, and the issue scopes the preferences
   to `capture`/`polish`. Wiring reels to the config would silently change
   existing reel renders.
+
+## cloche studio (2026-07-25)
+
+Issue #27 Phase 2. A local page over the same config `capture` and `polish`
+read, so backdrop choice can be made by eye instead of by name.
+
+- **A card is 4% backdrop, so the picker needed a new render path.** Measured:
+  a 960x640 input renders to 1044x724, a 42px sky border. Padding scales with
+  input size (`REFERENCE_SIZE`), so that fraction holds at every size. Whole
+  cards are therefore indistinguishable from each other as swatches, and space
+  scene features end up behind the card. `polish::render_backdrop` exposes the
+  existing private `backdrop()` painter at an arbitrary size with no card on
+  top. It is the same painting `compose_card` composites onto, so a swatch and
+  the real thing cannot drift.
+- **Hand-rolled HTTP on `std::net`, no dependency.** It serves one page and
+  four endpoints to one client at a time. `serve()` reads the request line,
+  walks headers for `Content-Length`, and reads exactly that many body bytes.
+  Header and body sizes are capped so one client cannot hold the accept loop.
+- **Swatch dimensions are clamped to 8..=2048.** They arrive on a query string
+  and a space scene is painted per pixel, so an unclamped `w=999999` is a free
+  denial of service against a local port.
+- **The POST endpoint re-validates every palette and scene name.** The page
+  never sends a bad one, but anything that can reach the port can post, and the
+  file it writes is read on every subsequent capture. Rejecting at the boundary
+  keeps a bad name out of the config rather than relying on the reader's
+  warnings.
+- **Loopback with no auth is the deliberate shape.** The page rewrites your
+  styling config; the bind address is the security boundary, which is why
+  `--host` carries a warning rather than a convenience default.
+- **The hero preview uses the newest capture on disk.** That is the honest
+  preview (it shows what your shots will actually look like) but it means
+  opening the studio displays whatever you last screenshotted. Documented in the
+  README rather than papered over.
+- **`include_str!` for the page**, with `/src/*.html` added to the `Cargo.toml`
+  include list. Without that line `cargo publish` drops the file and the binary
+  fails to build from the published crate.

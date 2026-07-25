@@ -22,6 +22,17 @@ All notable changes to this project are documented here. The format follows
   already had, plus the same two arguments on the MCP `capture` tool. Explicit
   flags override the persisted config.
 - **`cloche schema --for config`** emits the JSON contract for the new command.
+- **`cloche studio`**, a local page for picking backdrops by eye instead of by
+  name. Every palette and scene is shown as a real render, clicking toggles a
+  backdrop in or out of the random pool (or pins it), and every change is
+  written to the same `config.json` the CLI reads. Binds to `127.0.0.1` with no
+  auth by design; `--host` widens it, `--port 0` takes any free port, and
+  `--print-url` prints the URL as JSON without serving. No new dependencies: the
+  HTTP handling is hand-rolled on `std::net`.
+- **`polish::render_backdrop`** paints a backdrop at any size with no card on
+  top. A finished card is only about 4% backdrop by width, so whole cards are
+  indistinguishable from each other as swatches; the picker needs the sky on its
+  own.
 
 ### Changed
 - A named random pool can reach the gradient palettes again. Random styling

@@ -26,6 +26,7 @@ include = [
     "/scripts/*.ps1",
     "/scripts/*.sh",
     "/src/**/*.rs",
+    "/src/*.html",
 ]
 
 [[bin]]

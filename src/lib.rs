@@ -13,6 +13,7 @@ mod polish;
 mod reel_hyperframes;
 mod setup;
 mod space;
+mod studio;
 mod text;
 mod util;
 
@@ -38,5 +39,6 @@ pub fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
         Command::CodexPayload(args) => codex::payload(args),
         Command::Mcp(args) => mcp::run(args),
         Command::Setup(args) => setup::run(args),
+        Command::Studio(args) => studio::run(args),
     }
 }

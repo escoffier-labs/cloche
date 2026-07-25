@@ -500,6 +500,16 @@ fn soft_shadow_layer(
     )
 }
 
+/// Paint just the backdrop at an arbitrary size, with no card on top.
+///
+/// A finished card is only about 4% backdrop by width (padding scales with the
+/// input, so that ratio holds at every size), which makes whole cards useless
+/// as swatches in a picker. This is the same painting `compose_card` sits a
+/// card on, so a swatch and the real thing agree.
+pub fn render_backdrop(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
+    backdrop(width.max(1), height.max(1), style)
+}
+
 fn backdrop(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
     if style.backdrop == BackdropKind::Space {
         return crate::space::render(width, height, style);
@@ -826,6 +836,56 @@ mod tests {
         let style = style_from_seed_in_pool(11, &palettes, &[]);
         assert_eq!(style.palette_name, style_from_seed(11).palette_name);
         assert!(style.is_space());
+    }
+
+    #[test]
+    fn render_backdrop_matches_the_card_it_would_sit_under() {
+        // A swatch that drifts from the real card is worse than no swatch.
+        let style = style_with_palette(9, "orion-emission").expect("known palette");
+        let swatch = render_backdrop(120, 90, &style);
+        let same = backdrop(120, 90, &style);
+        assert_eq!(swatch.as_raw(), same.as_raw());
+    }
+
+    #[test]
+    fn render_backdrop_is_deterministic_and_seed_sensitive() {
+        let a = style_with_palette(9, "carina-hubble").expect("known palette");
+        let b = style_with_palette(10, "carina-hubble").expect("known palette");
+        assert_eq!(
+            render_backdrop(96, 72, &a).as_raw(),
+            render_backdrop(96, 72, &a).as_raw(),
+            "same seed must repeat"
+        );
+        assert_ne!(
+            render_backdrop(96, 72, &a).as_raw(),
+            render_backdrop(96, 72, &b).as_raw(),
+            "a different seed must paint a different sky"
+        );
+    }
+
+    #[test]
+    fn render_backdrop_survives_a_zero_dimension() {
+        // Width and height come off a query string in the studio server.
+        let style = style_from_seed(4);
+        let image = render_backdrop(0, 0, &style);
+        assert_eq!(image.dimensions(), (1, 1));
+    }
+
+    #[test]
+    fn render_backdrop_distinguishes_palettes_where_whole_cards_do_not() {
+        // The point of the whole function: at swatch size, two palettes must
+        // not look alike.
+        let a = render_backdrop(
+            64,
+            48,
+            &style_with_palette(3, "ember-glow").expect("palette"),
+        );
+        let b = render_backdrop(
+            64,
+            48,
+            &style_with_palette(3, "aurora-teal").expect("palette"),
+        );
+        assert_ne!(a.as_raw(), b.as_raw());
     }
 
     #[test]

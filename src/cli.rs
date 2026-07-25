@@ -54,6 +54,7 @@ pub enum Command {
     CodexPayload(crate::codex::CodexPayloadArgs),
     Mcp(crate::mcp::McpArgs),
     Setup(crate::setup::SetupArgs),
+    Studio(crate::studio::StudioArgs),
 }
 
 /// Style an existing image into a Cloche presentation card: rounded window,

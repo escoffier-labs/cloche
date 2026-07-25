@@ -196,8 +196,29 @@ path outright):
   `warnings` and falls back to defaults rather than costing you the capture.
 
 `cloche config show` and `cloche config options` emit the same JSON contract as
-every other command (`cloche schema --for config`), so a picker UI can read the
-menu and the current selection without parsing help text.
+every other command (`cloche schema --for config`).
+
+### cloche studio
+
+If you would rather see the backdrops than read their names:
+
+```bash
+cloche studio              # http://127.0.0.1:4317
+cloche studio --port 0     # let the OS pick a port
+cloche studio --print-url  # print the URL as JSON and exit
+```
+
+A local page showing every backdrop and scene as a real render. Click to switch
+one in or out of the random pool, or switch to Pin one to lock a single
+backdrop. Changes are written to the same `config.json` the CLI reads, and the
+page shows the equivalent `cloche config set` for whatever you have selected.
+
+The hero preview uses your newest capture, so the page will display whatever you
+last screenshotted. Worth knowing before you screen-share it.
+
+It binds to `127.0.0.1` by default and has no authentication, because anything
+that can reach the port can rewrite your styling config. `--host` widens that:
+only use it on a network you trust.
 
 ## Command Reference
 
@@ -222,6 +243,8 @@ cloche config options
 cloche config set --mode pinned --palette orion-emission --scene jwst
 cloche config set --mode random --palettes carina-hubble,pleiades-reflection
 cloche config set --clear all
+cloche studio
+cloche studio --port 0 --print-url
 cloche gallery --limit 10
 cloche gallery --root /tmp --html /tmp/cloche.html --title "My Shots" --open
 cloche latest
