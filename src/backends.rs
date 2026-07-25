@@ -54,22 +54,76 @@ pub fn doctor_report() -> DoctorReport {
     }
 }
 
+/// External helpers a Linux capture, window-list, frame-extent, or text path
+/// can actually invoke. Doctor reports exactly this set so availability matches
+/// reachable fallbacks (see #19).
+#[cfg(not(target_os = "windows"))]
+const LINUX_REACHABLE_HELPERS: &[&str] = &[
+    "xdotool",
+    "wmctrl",
+    "grim",
+    "gnome-screenshot",
+    "import",
+    "scrot",
+    "flameshot",
+    "xprop",
+    "python3",
+    "timeout",
+];
+
+#[cfg(not(target_os = "windows"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ActiveCaptureTools {
+    xdotool: bool,
+    import: bool,
+    gnome_screenshot: bool,
+    scrot: bool,
+}
+
+#[cfg(not(target_os = "windows"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActiveX11Step {
+    ImportWithXdotool,
+    GnomeScreenshot,
+    Scrot,
+}
+
+/// Ordered active-window backends for X11. gnome-screenshot/scrot find the
+/// focused window themselves, so they stay in the chain without xdotool.
+#[cfg(not(target_os = "windows"))]
+fn next_active_x11_steps(tools: ActiveCaptureTools) -> Vec<ActiveX11Step> {
+    let mut steps = Vec::new();
+    if tools.xdotool && tools.import {
+        steps.push(ActiveX11Step::ImportWithXdotool);
+    }
+    if tools.gnome_screenshot {
+        steps.push(ActiveX11Step::GnomeScreenshot);
+    }
+    if tools.scrot {
+        steps.push(ActiveX11Step::Scrot);
+    }
+    steps
+}
+
+#[cfg(not(target_os = "windows"))]
+fn x11_active_capture_ready(tools: ActiveCaptureTools) -> bool {
+    !next_active_x11_steps(tools).is_empty()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn probe_active_capture_tools() -> ActiveCaptureTools {
+    ActiveCaptureTools {
+        xdotool: util::has_command("xdotool"),
+        import: util::has_command("import"),
+        gnome_screenshot: util::has_command("gnome-screenshot"),
+        scrot: util::has_command("scrot"),
+    }
+}
+
 #[cfg(not(target_os = "windows"))]
 fn linux_doctor_report() -> DoctorReport {
     let session = session_info();
-    let helper_names = [
-        "xdotool",
-        "wmctrl",
-        "grim",
-        "gnome-screenshot",
-        "import",
-        "scrot",
-        "spectacle",
-        "python3",
-        "gdbus",
-        "timeout",
-    ];
-    let helpers = helper_names
+    let helpers = LINUX_REACHABLE_HELPERS
         .iter()
         .map(|name| HelperStatus {
             name: (*name).to_string(),
@@ -79,13 +133,13 @@ fn linux_doctor_report() -> DoctorReport {
         .collect::<Vec<_>>();
 
     let has_gui = session.display.is_some() || session.wayland_display.is_some();
+    let active_tools = probe_active_capture_tools();
     let capabilities = vec![
         CapabilityStatus {
             name: "x11-active-window".to_string(),
-            available: session.display.is_some()
-                && util::has_command("xdotool")
-                && capture_helper_available(),
-            detail: "Requires DISPLAY, xdotool, and import/gnome-screenshot/scrot.".to_string(),
+            available: session.display.is_some() && x11_active_capture_ready(active_tools),
+            detail: "Requires DISPLAY and xdotool+import, or gnome-screenshot, or scrot."
+                .to_string(),
         },
         CapabilityStatus {
             name: "wayland-wlroots-screen".to_string(),
@@ -250,51 +304,66 @@ fn capture_region(output_path: &Path) -> Result<CaptureSuccess, AppError> {
 #[cfg(not(target_os = "windows"))]
 fn capture_active(output_path: &Path) -> Result<CaptureSuccess, AppError> {
     if util::env_var("DISPLAY").is_some() {
-        let active_window = if util::has_command("xdotool") {
+        let tools = probe_active_capture_tools();
+        let steps = next_active_x11_steps(tools);
+        let window = if tools.xdotool {
             active_x11_window().ok()
         } else {
             None
         };
 
-        let Some(window) = active_window else {
+        for step in steps {
+            match step {
+                ActiveX11Step::ImportWithXdotool => {
+                    let Some(ref identified) = window else {
+                        continue;
+                    };
+                    if capture_x11_window(identified.id.as_deref(), output_path).is_ok() {
+                        return Ok(CaptureSuccess {
+                            backend: BackendInfo {
+                                name: "x11".to_string(),
+                                strategy: "xdotool active window + ImageMagick import".to_string(),
+                            },
+                            window: Some(identified.clone()),
+                        });
+                    }
+                }
+                ActiveX11Step::GnomeScreenshot => {
+                    let output = output_path.display().to_string();
+                    util::run_status("gnome-screenshot", &["-w", "-f", &output])?;
+                    return Ok(CaptureSuccess {
+                        backend: BackendInfo {
+                            name: "gnome-screenshot".to_string(),
+                            strategy: "active window".to_string(),
+                        },
+                        window: window.clone(),
+                    });
+                }
+                ActiveX11Step::Scrot => {
+                    let output = output_path.display().to_string();
+                    util::run_status("scrot", &["-u", &output])?;
+                    return Ok(CaptureSuccess {
+                        backend: BackendInfo {
+                            name: "scrot".to_string(),
+                            strategy: "active window".to_string(),
+                        },
+                        window: window.clone(),
+                    });
+                }
+            }
+        }
+
+        if tools.xdotool
+            && window.is_none()
+            && !x11_active_capture_ready(ActiveCaptureTools {
+                xdotool: false,
+                ..tools
+            })
+        {
             return Err(AppError::Message(
                 "no active X11 window could be identified; use --target screen for full-screen capture"
                     .to_string(),
             ));
-        };
-
-        if capture_x11_window(window.id.as_deref(), output_path).is_ok() {
-            return Ok(CaptureSuccess {
-                backend: BackendInfo {
-                    name: "x11".to_string(),
-                    strategy: "xdotool active window + ImageMagick import".to_string(),
-                },
-                window: Some(window),
-            });
-        }
-
-        if util::has_command("gnome-screenshot") {
-            let output = output_path.display().to_string();
-            util::run_status("gnome-screenshot", &["-w", "-f", &output])?;
-            return Ok(CaptureSuccess {
-                backend: BackendInfo {
-                    name: "gnome-screenshot".to_string(),
-                    strategy: "active window".to_string(),
-                },
-                window: Some(window),
-            });
-        }
-
-        if util::has_command("scrot") {
-            let output = output_path.display().to_string();
-            util::run_status("scrot", &["-u", &output])?;
-            return Ok(CaptureSuccess {
-                backend: BackendInfo {
-                    name: "scrot".to_string(),
-                    strategy: "active window".to_string(),
-                },
-                window: Some(window),
-            });
         }
     }
 
@@ -517,13 +586,6 @@ fn parse_xdotool_geometry(output: &str) -> Option<Geometry> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn capture_helper_available() -> bool {
-    util::has_command("import")
-        || util::has_command("gnome-screenshot")
-        || util::has_command("scrot")
-}
-
-#[cfg(not(target_os = "windows"))]
 fn parse_frame_extents(output: &str) -> Option<FrameExtents> {
     let (_name, values) = output.split_once('=')?;
     let values = values
@@ -606,10 +668,16 @@ mod stem_tests {
 #[cfg(test)]
 #[cfg(not(target_os = "windows"))]
 mod tests {
+    use super::ActiveCaptureTools;
+    use super::ActiveX11Step;
     use super::FrameExtents;
+    use super::linux_doctor_report;
+    use super::next_active_x11_steps;
     use super::parse_frame_extents;
     use super::parse_xdotool_geometry;
+    use super::x11_active_capture_ready;
     use crate::contract::Geometry;
+    use std::collections::HashSet;
 
     #[test]
     fn parses_xdotool_shell_geometry() {
@@ -649,5 +717,74 @@ mod tests {
                 bottom: 67,
             })
         );
+    }
+
+    #[test]
+    fn active_fallbacks_reachable_without_xdotool() {
+        // gnome-screenshot -w / scrot -u find the focused window themselves;
+        // they must remain reachable when xdotool is absent (#19).
+        assert_eq!(
+            next_active_x11_steps(ActiveCaptureTools {
+                xdotool: false,
+                import: false,
+                gnome_screenshot: true,
+                scrot: false,
+            }),
+            vec![ActiveX11Step::GnomeScreenshot]
+        );
+        assert_eq!(
+            next_active_x11_steps(ActiveCaptureTools {
+                xdotool: false,
+                import: true,
+                gnome_screenshot: false,
+                scrot: true,
+            }),
+            vec![ActiveX11Step::Scrot]
+        );
+        assert!(!x11_active_capture_ready(ActiveCaptureTools {
+            xdotool: false,
+            import: true,
+            gnome_screenshot: false,
+            scrot: false,
+        }));
+        assert!(x11_active_capture_ready(ActiveCaptureTools {
+            xdotool: true,
+            import: true,
+            gnome_screenshot: false,
+            scrot: false,
+        }));
+    }
+
+    #[test]
+    fn doctor_helpers_match_reachable_capture_paths() {
+        let report = linux_doctor_report();
+        let names: HashSet<&str> = report
+            .helpers
+            .iter()
+            .map(|helper| helper.name.as_str())
+            .collect();
+        for tool in [
+            "xdotool",
+            "wmctrl",
+            "grim",
+            "gnome-screenshot",
+            "import",
+            "scrot",
+            "flameshot",
+            "xprop",
+            "python3",
+            "timeout",
+        ] {
+            assert!(
+                names.contains(tool),
+                "doctor omits helper reachable from capture/text paths: {tool}"
+            );
+        }
+        for tool in ["spectacle", "gdbus"] {
+            assert!(
+                !names.contains(tool),
+                "doctor claims helper with no reachable capture path: {tool}"
+            );
+        }
     }
 }

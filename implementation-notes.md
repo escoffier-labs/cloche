@@ -461,3 +461,14 @@ Resolution lives in `captures::resolve_metadata_path`: rank legacy
 `created_at` and take the newest, so a reused pre-migration out-dir does not
 shadow a newer flat capture. Picked newest over hard errors on ambiguity so a
 re-used demo out-dir keeps working.
+
+## Active-target fallbacks without xdotool (2026-07-25)
+
+`capture --target active` required xdotool to identify a window before the
+gnome-screenshot/scrot fallbacks could run, even though those helpers resolve
+the focused window themselves (`-w` / `-u`). Planning is now
+`next_active_x11_steps`: xdotool+import first when both exist, then
+gnome-screenshot, then scrot, with no early return when xdotool is missing.
+Doctor's helper list is the single `LINUX_REACHABLE_HELPERS` constant (adds
+flameshot/xprop used by region/frame-extents; drops unused spectacle/gdbus).
+`x11-active-window` capability matches the same readiness predicate.
