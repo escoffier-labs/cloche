@@ -429,3 +429,14 @@ space frame and the drop shadow still read. Applies to gradient cards too.
   README badge, and CHANGELOG. Issue #24 / PR #26 started as a badge-only fix
   toward Apache; redirected to the full MIT relicense so the contributor PR
   still lands the correction.
+
+## Same-second shot stems (2026-07-25)
+
+`shot_stem()` used second-resolution UTC only, so two captures in one second
+shared a stem and overwrote flat artifacts. Each `cloche capture` is its own
+process and calls `shot_stem` once, so a process-local counter alone still
+collides (every process starts at 0). Stem is now
+`cloche-shot-<UTC>Z-<pid>-<n>`: pid covers hotkey/scripted cross-process
+same-second captures; the counter covers repeated in-process calls and keeps
+the uniqueness regression test deterministic. Millis alone was rejected
+because sub-ms loops can still collide.

@@ -566,9 +566,41 @@ pub fn default_gallery_dir() -> PathBuf {
 
 /// Timestamped filename stem shared by a capture's flat artifacts:
 /// `<stem>.png` (card), `<stem>.raw.png`, `<stem>.json`, `<stem>.txt`.
+///
+/// Each CLI/MCP capture is its own process and calls this once, so the stem
+/// includes the process id (cross-process same-second captures) plus a
+/// process-local counter (repeated in-process calls). Without both, a hotkey
+/// double-press or scripted loop in the same UTC second overwrites artifacts.
 pub fn shot_stem() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
-    format!("cloche-shot-{stamp}")
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    format!("cloche-shot-{stamp}-{}-{n}", std::process::id())
+}
+
+#[cfg(test)]
+mod stem_tests {
+    use super::shot_stem;
+    use std::collections::HashSet;
+
+    #[test]
+    fn shot_stem_is_unique_across_rapid_calls() {
+        // In-process uniqueness comes from the counter suffix. Cross-process
+        // uniqueness comes from embedding std::process::id() in the stem.
+        let stems: Vec<String> = (0..8).map(|_| shot_stem()).collect();
+        let unique: HashSet<&String> = stems.iter().collect();
+        assert_eq!(
+            unique.len(),
+            stems.len(),
+            "shot_stem collided within one second: {stems:?}"
+        );
+        let pid = std::process::id().to_string();
+        assert!(
+            stems.iter().all(|s| s.contains(&format!("-{pid}-"))),
+            "shot_stem must embed pid for cross-process disambiguation: {stems:?}"
+        );
+    }
 }
 
 #[cfg(test)]
