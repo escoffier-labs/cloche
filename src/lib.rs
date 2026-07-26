@@ -16,6 +16,7 @@ mod setup;
 mod sky;
 mod space;
 mod studio;
+mod terrain;
 mod text;
 mod util;
 

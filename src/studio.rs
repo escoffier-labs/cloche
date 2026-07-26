@@ -304,6 +304,10 @@ fn state_value() -> serde_json::Value {
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
+            terrains: polish::terrain_names()
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
         },
         sample: newest_capture(),
         warnings,
@@ -350,6 +354,12 @@ fn save_body(body: &[u8]) -> Result<(), String> {
             return Err(format!("unknown sky: {name}"));
         }
     }
+    let known_terrain: Vec<&str> = polish::terrain_names();
+    for name in prefs.terrains.iter().chain(prefs.terrain.iter()) {
+        if !known_terrain.contains(&name.as_str()) {
+            return Err(format!("unknown terrain: {name}"));
+        }
+    }
     let path = config::path();
     let (mut stored, _) = config::load_from(&path);
     stored.polish = prefs;
@@ -377,6 +387,11 @@ fn style_from_query(query: &str) -> polish::PresentationStyle {
         && style.is_sky()
     {
         style.sky = Some(sky);
+    }
+    if let Some(terrain) = query_get(query, "terrain").and_then(|n| polish::terrain_from_name(&n))
+        && style.is_terrain()
+    {
+        style.terrain = Some(terrain);
     }
     style
 }
@@ -616,5 +631,31 @@ mod tests {
             polish::scene_names().len()
         );
         assert!(value["configPath"].is_string());
+    }
+
+    #[test]
+    fn a_terrain_is_ignored_on_a_non_terrain_palette() {
+        let style = style_from_query("palette=ember-glow&terrain=dunes&seed=1");
+        assert_eq!(style.terrain, None);
+        let terrain = style_from_query("palette=dunes&terrain=mesa&seed=1");
+        assert_eq!(terrain.terrain, polish::terrain_from_name("mesa"));
+    }
+
+    #[test]
+    fn posting_an_unknown_terrain_is_refused() {
+        let err = save_body(br#"{"terrains":["butte"]}"#).expect_err("rejected");
+        assert!(err.contains("butte"), "{err}");
+    }
+
+    #[test]
+    fn state_reports_the_terrain_menu() {
+        let value = state_value();
+        assert_eq!(
+            value["options"]["terrains"]
+                .as_array()
+                .expect("terrains")
+                .len(),
+            polish::terrain_names().len()
+        );
     }
 }

@@ -82,6 +82,10 @@ pub struct PolishArgs {
     /// omitted. Only applies to sky palettes.
     #[arg(long, value_parser = sky_name_parser())]
     pub sky: Option<String>,
+    /// Pin the terrain kind (e.g. `dunes`, `mesa`, `glacier`); random when
+    /// omitted. Only applies to terrain palettes.
+    #[arg(long, value_parser = terrain_name_parser())]
+    pub terrain: Option<String>,
     /// Seed for deterministic styling.
     #[arg(long)]
     pub style_seed: Option<u64>,
@@ -186,6 +190,10 @@ fn sky_name_parser() -> clap::builder::PossibleValuesParser {
     clap::builder::PossibleValuesParser::new(polish::sky_names())
 }
 
+fn terrain_name_parser() -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new(polish::terrain_names())
+}
+
 #[derive(Debug, Args)]
 pub struct CaptureArgs {
     #[arg(long, value_enum, default_value = "active")]
@@ -221,6 +229,10 @@ pub struct CaptureArgs {
     /// to sky palettes.
     #[arg(long, value_parser = sky_name_parser())]
     pub sky: Option<String>,
+    /// Pin the terrain kind (e.g. `dunes`, `mesa`, `glacier`). Only applies to
+    /// terrain palettes.
+    #[arg(long, value_parser = terrain_name_parser())]
+    pub terrain: Option<String>,
     #[arg(long)]
     pub style_seed: Option<u64>,
     /// Copy the card (or the raw shot with --presentation raw) to the
@@ -341,6 +353,9 @@ pub struct ConfigSetArgs {
     /// Sky to pin. Sky palettes only.
     #[arg(long, value_parser = sky_name_parser())]
     pub sky: Option<String>,
+    /// Terrain to pin. Terrain palettes only.
+    #[arg(long, value_parser = terrain_name_parser())]
+    pub terrain: Option<String>,
     /// Comma-separated palettes the random picker may choose from. Replaces the
     /// stored pool.
     #[arg(long, value_delimiter = ',', value_parser = palette_name_parser())]
@@ -357,6 +372,10 @@ pub struct ConfigSetArgs {
     /// stored pool.
     #[arg(long, value_delimiter = ',', value_parser = sky_name_parser())]
     pub skies: Option<Vec<String>>,
+    /// Comma-separated terrains the random picker may choose from. Replaces
+    /// the stored pool.
+    #[arg(long, value_delimiter = ',', value_parser = terrain_name_parser())]
+    pub terrains: Option<Vec<String>>,
     /// Reset a preference to its default. Repeatable.
     #[arg(long = "clear", value_enum)]
     pub clear: Vec<ClearTarget>,
@@ -381,6 +400,8 @@ pub enum ClearTarget {
     Motif,
     /// Drop the pinned sky.
     Sky,
+    /// Drop the pinned terrain.
+    Terrain,
     /// Empty the random palette pool, restoring every space palette.
     Palettes,
     /// Empty the random scene pool.
@@ -389,6 +410,8 @@ pub enum ClearTarget {
     Motifs,
     /// Empty the random sky pool.
     Skies,
+    /// Empty the random terrain pool.
+    Terrains,
     /// Reset every polish preference.
     All,
 }
@@ -490,10 +513,13 @@ pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>
                             let style = config::resolve_style(
                                 &prefs,
                                 args.style_seed,
-                                args.palette.as_deref(),
-                                args.scene.as_deref(),
-                                args.motif.as_deref(),
-                                args.sky.as_deref(),
+                                &config::StylePins {
+                                    palette: args.palette.as_deref(),
+                                    scene: args.scene.as_deref(),
+                                    motif: args.motif.as_deref(),
+                                    sky: args.sky.as_deref(),
+                                    terrain: args.terrain.as_deref(),
+                                },
                                 &mut warnings,
                             );
                             match polish::render_codex_card(
@@ -990,10 +1016,13 @@ fn run_polish(args: PolishArgs, config_path: &Path) -> crate::contract::PolishRe
         let style = config::resolve_style(
             &prefs,
             args.style_seed,
-            args.palette.as_deref(),
-            args.scene.as_deref(),
-            args.motif.as_deref(),
-            args.sky.as_deref(),
+            &config::StylePins {
+                palette: args.palette.as_deref(),
+                scene: args.scene.as_deref(),
+                motif: args.motif.as_deref(),
+                sky: args.sky.as_deref(),
+                terrain: args.terrain.as_deref(),
+            },
             &mut warnings,
         );
         let parent_ready = card_path
@@ -1249,10 +1278,12 @@ fn apply_config_set(prefs: &mut config::PolishPrefs, args: &ConfigSetArgs) {
             ClearTarget::Scene => prefs.scene = None,
             ClearTarget::Motif => prefs.motif = None,
             ClearTarget::Sky => prefs.sky = None,
+            ClearTarget::Terrain => prefs.terrain = None,
             ClearTarget::Palettes => prefs.palettes.clear(),
             ClearTarget::Scenes => prefs.scenes.clear(),
             ClearTarget::Motifs => prefs.motifs.clear(),
             ClearTarget::Skies => prefs.skies.clear(),
+            ClearTarget::Terrains => prefs.terrains.clear(),
             ClearTarget::All => *prefs = config::PolishPrefs::default(),
         }
     }
@@ -1274,6 +1305,9 @@ fn apply_config_set(prefs: &mut config::PolishPrefs, args: &ConfigSetArgs) {
     if let Some(sky) = args.sky.clone() {
         prefs.sky = Some(sky);
     }
+    if let Some(terrain) = args.terrain.clone() {
+        prefs.terrain = Some(terrain);
+    }
     if let Some(palettes) = args.palettes.clone() {
         prefs.palettes = palettes;
     }
@@ -1285,6 +1319,9 @@ fn apply_config_set(prefs: &mut config::PolishPrefs, args: &ConfigSetArgs) {
     }
     if let Some(skies) = args.skies.clone() {
         prefs.skies = skies;
+    }
+    if let Some(terrains) = args.terrains.clone() {
+        prefs.terrains = terrains;
     }
 }
 
@@ -1322,6 +1359,10 @@ fn style_options() -> crate::contract::StyleOptions {
             .map(str::to_string)
             .collect(),
         skies: polish::sky_names()
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        terrains: polish::terrain_names()
             .into_iter()
             .map(str::to_string)
             .collect(),
@@ -1420,6 +1461,8 @@ mod tests {
             motifs: None,
             sky: None,
             skies: None,
+            terrain: None,
+            terrains: None,
             clear: Vec::new(),
             format: OutputFormat::Json,
         }
@@ -1498,6 +1541,7 @@ mod tests {
             scene: None,
             motif: None,
             sky: None,
+            terrain: None,
             style_seed: Some(7),
             format: OutputFormat::Json,
         });
@@ -1529,6 +1573,7 @@ mod tests {
             scene: None,
             motif: None,
             sky: None,
+            terrain: None,
             style_seed: Some(11),
             format: OutputFormat::Json,
         });
@@ -1563,6 +1608,7 @@ mod tests {
                 scene: None,
                 motif: None,
                 sky: None,
+                terrain: None,
                 style_seed: Some(4),
                 format: OutputFormat::Json,
             },
@@ -1598,6 +1644,7 @@ mod tests {
                 scene: None,
                 motif: None,
                 sky: None,
+                terrain: None,
                 style_seed: Some(4),
                 format: OutputFormat::Json,
             },
@@ -1731,6 +1778,7 @@ mod tests {
             scene: None,
             motif: None,
             sky: None,
+            terrain: None,
             style_seed: Some(3),
             format: OutputFormat::Json,
         });
@@ -1803,6 +1851,7 @@ mod tests {
             scene: None,
             motif: None,
             sky: None,
+            terrain: None,
             style_seed: Some(13),
             format: OutputFormat::Json,
         });
@@ -1821,6 +1870,7 @@ mod tests {
             scene: None,
             motif: None,
             sky: None,
+            terrain: None,
             style_seed: Some(5),
             format: OutputFormat::Json,
         });
@@ -1936,6 +1986,58 @@ mod tests {
             direct
         );
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn polish_accepts_the_terrain_flag() {
+        let dir = temp_dir("polish-terrain");
+        let input = dir.join("shot.png");
+        write_test_image(&input, 160, 120);
+        let result = run_polish_defaults(PolishArgs {
+            input,
+            out: None,
+            palette: Some("dunes".to_string()),
+            scene: None,
+            motif: None,
+            sky: None,
+            terrain: Some("dunes".to_string()),
+            style_seed: Some(7),
+            format: OutputFormat::Json,
+        });
+        assert!(result.ok, "errors: {:?}", result.errors);
+        assert_eq!(result.presentation_style.expect("style").palette, "dunes");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn config_options_expose_the_terrain_names() {
+        let dir = temp_dir("config-options-terrain");
+        let path = dir.join("config.json");
+        let result = run_config(ConfigCommand::Options, &path);
+        let options = result.options.expect("options");
+        assert_eq!(options.terrains, polish::terrain_names());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn config_set_persists_the_terrain_pin() {
+        let dir = temp_dir("config-set-terrain");
+        let path = dir.join("config.json");
+        let written = config_set(
+            ConfigSetArgs {
+                mode: Some(ConfigPolishMode::Pinned),
+                palette: Some("dunes".to_string()),
+                terrain: Some("dunes".to_string()),
+                terrains: Some(vec!["dunes".to_string(), "mesa".to_string()]),
+                ..empty_set_args()
+            },
+            &path,
+        );
+        assert!(written.ok, "errors: {:?}", written.errors);
+        let reloaded = run_config(ConfigCommand::Show, &path);
+        assert_eq!(reloaded.config.polish.terrain.as_deref(), Some("dunes"));
+        assert_eq!(reloaded.config.polish.terrains, vec!["dunes", "mesa"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

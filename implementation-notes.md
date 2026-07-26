@@ -625,3 +625,25 @@ family, and a selection function that lets the table grow.
   picker was actually drawing from all twelve deep-space palettes. The page now
   distinguishes an explicit pool from the default, and the first click on an
   unconstrained pool materialises it so switching one off removes one.
+
+## Terrain backdrops (2026-07-26)
+
+- **User-authorized fresh correction (mesa + badlands).** After the original
+  stopping rule fired, the user authorized another pass. Both scenes passed
+  visual inspection on the second render of this pass at seed 7 and 440×300.
+  Including the original work and the intervening discarded attempt, each
+  scene consumed 6 render-and-look iterations.
+- **Mesa (iteration 2).** Edge-anchored broad plateaus: left and right lanes
+  sit partly off-frame with ~quarter-canvas half-width and taller relief; an
+  optional smaller center lane may appear. Flat caps and stepped/tapered
+  inward shoulders are preserved. `fresh_profiles_mesa_reaches_both_outer_bands`
+  guards padding-band relief at seed 7 / 440×300. The accepted render carries
+  stepped plateau shoulders in both outer bands, outside the centered capture.
+- **Badlands (iteration 2).** Four or five broad overlapping triangular ridges,
+  including off-frame edge anchors, plus a low relief floor so the silhouette
+  never returns to open ground between peaks. Slope lighting is softened
+  (wider sample, squared face term, lower mix) to avoid bright full-height
+  seam highlights. Horizontal strata and localized diagonal washes are kept.
+  `fresh_profiles_badlands_stays_continuous` guards ridge-body continuity at
+  seed 7 / 440×300. The accepted render reads as one layered ridge chain
+  without the earlier fence-like gaps or vertical drips.

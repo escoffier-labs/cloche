@@ -125,6 +125,7 @@ fn tool_definitions() -> Value {
                     "scene": { "type": "string", "enum": crate::polish::scene_names(), "description": "Pin the deep-space scene look (jwst, alma, cmb, etc.). Only applies to space palettes." },
                     "motif": { "type": "string", "enum": crate::polish::motif_names(), "description": "Pin the geometric motif (plaid, stripe, grid, etc.). Only applies to pattern palettes." },
                     "sky": { "type": "string", "enum": crate::polish::sky_names(), "description": "Pin the sky condition (bolt, mammatus, aurora, etc.). Only applies to sky palettes." },
+                    "terrain": { "type": "string", "enum": crate::polish::terrain_names(), "description": "Pin the terrain kind (dunes, mesa, badlands, glacier). Only applies to terrain palettes." },
                     "styleSeed": { "type": "integer" },
                     "clipboard": { "type": "boolean", "description": "Copy the card to the system clipboard after capture." },
                     "format": { "type": "string", "enum": ["json"], "default": "json", "description": "Output format. The MCP wrapper always passes --format json." }
@@ -144,6 +145,7 @@ fn tool_definitions() -> Value {
                     "scene": { "type": "string", "enum": crate::polish::scene_names(), "description": "Pin the deep-space scene look (jwst, alma, cmb, etc.); random when omitted. Only applies to space palettes." },
                     "motif": { "type": "string", "enum": crate::polish::motif_names(), "description": "Pin the geometric motif (plaid, stripe, grid, etc.); random when omitted. Only applies to pattern palettes." },
                     "sky": { "type": "string", "enum": crate::polish::sky_names(), "description": "Pin the sky condition (bolt, mammatus, aurora, etc.); random when omitted. Only applies to sky palettes." },
+                    "terrain": { "type": "string", "enum": crate::polish::terrain_names(), "description": "Pin the terrain kind (dunes, mesa, badlands, glacier); random when omitted. Only applies to terrain palettes." },
                     "styleSeed": { "type": "integer", "description": "Seed for deterministic styling." }
                 },
                 "required": ["input"]
@@ -231,6 +233,10 @@ pub fn tool_command_args(name: &str, arguments: &Value) -> Result<Vec<String>, S
                 args.push("--sky".to_string());
                 args.push(value);
             }
+            if let Some(value) = string_arg(arguments, "terrain") {
+                args.push("--terrain".to_string());
+                args.push(value);
+            }
             if let Some(value) = string_arg(arguments, "motif") {
                 args.push("--motif".to_string());
                 args.push(value);
@@ -264,6 +270,10 @@ pub fn tool_command_args(name: &str, arguments: &Value) -> Result<Vec<String>, S
             }
             if let Some(value) = string_arg(arguments, "sky") {
                 args.push("--sky".to_string());
+                args.push(value);
+            }
+            if let Some(value) = string_arg(arguments, "terrain") {
+                args.push("--terrain".to_string());
                 args.push(value);
             }
             if let Some(value) = string_arg(arguments, "motif") {
@@ -550,5 +560,49 @@ mod tests {
         let error =
             tool_command_args("capture", &json!({ "format": "text" })).expect_err("bad format");
         assert!(error.contains("json"));
+    }
+
+    #[test]
+    fn capture_args_forward_terrain() {
+        let args = tool_command_args(
+            "capture",
+            &json!({ "palette": "dunes", "terrain": "mesa", "styleSeed": 3 }),
+        )
+        .expect("args");
+        assert!(args.windows(2).any(|w| w == ["--palette", "dunes"]));
+        assert!(args.windows(2).any(|w| w == ["--terrain", "mesa"]));
+    }
+
+    #[test]
+    fn polish_args_forward_terrain() {
+        let args = tool_command_args(
+            "polish",
+            &json!({ "input": "/tmp/shot.png", "palette": "dunes", "terrain": "glacier" }),
+        )
+        .expect("args");
+        assert!(args.windows(2).any(|w| w == ["--terrain", "glacier"]));
+    }
+
+    #[test]
+    fn capture_tool_advertises_the_terrain_enum() {
+        let tools = tool_definitions();
+        let capture = tools
+            .as_array()
+            .expect("tools")
+            .iter()
+            .find(|tool| tool["name"] == "capture")
+            .expect("capture tool");
+        let properties = &capture["inputSchema"]["properties"];
+        assert_eq!(
+            properties["terrain"]["enum"]
+                .as_array()
+                .expect("terrain enum")
+                .len(),
+            crate::polish::terrain_names().len()
+        );
+        assert_eq!(
+            properties["terrain"]["enum"].as_array().unwrap()[0],
+            json!("dunes")
+        );
     }
 }
