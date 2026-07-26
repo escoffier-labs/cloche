@@ -543,3 +543,85 @@ the config is the durable thing a UI would write to, so it lands first.
   for brand continuity with a still card, and the issue scopes the preferences
   to `capture`/`polish`. Wiring reels to the config would silently change
   existing reel renders.
+
+## cloche studio (2026-07-25)
+
+Issue #27 Phase 2. A local page over the same config `capture` and `polish`
+read, so backdrop choice can be made by eye instead of by name.
+
+- **A card is 4% backdrop, so the picker needed a new render path.** Measured:
+  a 960x640 input renders to 1044x724, a 42px sky border. Padding scales with
+  input size (`REFERENCE_SIZE`), so that fraction holds at every size. Whole
+  cards are therefore indistinguishable from each other as swatches, and space
+  scene features end up behind the card. `polish::render_backdrop` exposes the
+  existing private `backdrop()` painter at an arbitrary size with no card on
+  top. It is the same painting `compose_card` composites onto, so a swatch and
+  the real thing cannot drift.
+- **Hand-rolled HTTP on `std::net`, no dependency.** It serves one page and
+  four endpoints to one client at a time. `serve()` reads the request line,
+  walks headers for `Content-Length`, and reads exactly that many body bytes.
+  Header and body sizes are capped so one client cannot hold the accept loop.
+- **Swatch dimensions are clamped to 8..=2048.** They arrive on a query string
+  and a space scene is painted per pixel, so an unclamped `w=999999` is a free
+  denial of service against a local port.
+- **The POST endpoint re-validates every palette and scene name.** The page
+  never sends a bad one, but anything that can reach the port can post, and the
+  file it writes is read on every subsequent capture. Rejecting at the boundary
+  keeps a bad name out of the config rather than relying on the reader's
+  warnings.
+- **Loopback with no auth is the deliberate shape.** The page rewrites your
+  styling config; the bind address is the security boundary, which is why
+  `--host` carries a warning rather than a convenience default.
+- **The hero preview uses the newest capture on disk.** That is the honest
+  preview (it shows what your shots will actually look like) but it means
+  opening the studio displays whatever you last screenshotted. Documented in the
+  README rather than papered over.
+- **`include_str!` for the page**, with `/src/*.html` added to the `Cargo.toml`
+  include list. Without that line `cargo publish` drops the file and the binary
+  fails to build from the published crate.
+
+## Pattern backdrops and an append-safe palette table (2026-07-25)
+
+Three things that had to happen together: more palettes, a third backdrop
+family, and a selection function that lets the table grow.
+
+- **Selection scores names, it does not index positions.** The old pick was
+  `pool[rng.random_range(0..pool.len())]`, which makes the pool length the
+  modulus: adding one space palette changes what *every* existing seed renders,
+  and because `random_range` uses rejection sampling the draws after it shift
+  too, so padding and shadow move as well. Rendezvous hashing (score every
+  candidate with FNV-1a over seed+name, take the max) means a newcomer only
+  takes the seeds it wins. Measured in
+  `growing_the_table_leaves_most_seeds_alone`: adding a 13th name leaves >85% of
+  seeds untouched. Switching to it was a one-time break, taken deliberately in
+  one release rather than once per palette forever.
+- **FNV-1a is hand-rolled on purpose.** `DefaultHasher` is documented as not
+  stable across Rust releases, so using it would mean backdrops changing when
+  the toolchain updates.
+- **Nothing in the suite caught the old fragility.**
+  `empty_pools_reproduce_the_unconstrained_style` compares pooled against
+  unpooled, and both move together when the table grows. Table growth needed its
+  own test.
+- **Patterns mirror the space model exactly.** `BackdropKind::Pattern` with
+  `MotifKind` as the second axis, the same way space palettes take a
+  `SceneKind`. Pattern palette stops are read differently (stop 0 is the ground,
+  stop 2 the ink) which is documented on the `pattern()` constructor, since the
+  struct is shared across all three families.
+- **Houndstooth is a weave, not a check.** The first implementation was a
+  checkerboard split on the anti-diagonal, which renders as plain diagonal
+  bands, indistinguishable from the `diagonal` motif. Real dogtooth is what a
+  2/2 twill produces when warp and weft each carry a four-thread colour repeat.
+  Deriving it from the weave grows the teeth.
+  `houndstooth_is_not_just_diagonal_bands` pins that, because the shape compiles
+  and passes a not-flat check either way.
+- **The studio wedged on browser pre-connects.** The accept loop was strictly
+  serial and `read_line` had no deadline, so a socket opened without a request
+  blocked every later one. With 55 swatches on the page it stalled every load.
+  Fixed with a thread per connection plus read and write timeouts; a serial
+  loop was never going to be right for a page that asks for dozens of renders at
+  once.
+- **An empty pool means unconstrained, not empty.** The page rendered a fresh
+  config as "0 of 27 in rotation" with every swatch struck through, when the
+  picker was actually drawing from all twelve deep-space palettes. The page now
+  distinguishes an explicit pool from the default, and the first click on an
+  unconstrained pool materialises it so switching one off removes one.

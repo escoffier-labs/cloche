@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cloche studio</title>
+<style>
+:root{
+  --plate:#0a0a0c; --sunk:#08080a;
+  --rule:#24242c; --rule-soft:#1a1a20;
+  --ink:#e9e9ef; --dim:#8b8b98; --faint:#565662;
+  --accent:#ff9ec4; --accent-2:#84c4ff; --amber:#e0a44a;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --gut:28px;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--plate); color:var(--ink); font-family:var(--sans);
+  font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased}
+code{font-family:var(--mono)}
+
+.bar{display:flex; align-items:center; gap:20px; padding:0 var(--gut); height:60px;
+  border-bottom:1px solid var(--rule); position:sticky; top:0; z-index:20;
+  background:rgba(10,10,12,.86); backdrop-filter:blur(12px)}
+.wordmark{font-weight:800; font-size:17px; letter-spacing:-.025em}
+.wordmark span{color:var(--faint); font-weight:500}
+.bar .path{font-family:var(--mono); font-size:12.5px; color:var(--dim);
+  margin-left:auto; display:flex; align-items:center; gap:9px}
+.bar .state{color:var(--faint)}
+.dot{width:6px; height:6px; border-radius:50%; background:var(--accent);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  transition:background .3s, opacity .3s}
+.dot.busy{opacity:.35}
+
+.stage{display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:var(--gut);
+  padding:var(--gut); border-bottom:1px solid var(--rule); align-items:start}
+.preview{margin:0}
+.preview .frame{display:block; position:relative; border-radius:10px; overflow:hidden;
+  background:var(--sunk); border:1px solid var(--rule-soft);
+  aspect-ratio:1044/724; max-height:min(58vh,470px); margin-inline:auto}
+.preview img{position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
+  opacity:0; transition:opacity .55s ease}
+.preview img.live{opacity:1}
+.preview figcaption{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+  margin-top:13px; font-family:var(--mono); font-size:12.5px; color:var(--dim)}
+.preview figcaption b{color:var(--ink); font-weight:500}
+.preview figcaption .sep{color:var(--faint)}
+.rolling{display:inline-flex; align-items:center; gap:7px; color:var(--faint); margin-left:auto}
+.rolling i{width:5px; height:5px; border-radius:50%; background:var(--accent);
+  animation:pulse 1.9s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.25}50%{opacity:1}}
+
+.controls{display:flex; flex-direction:column; gap:22px}
+.lab{display:block; font-size:11px; font-weight:600; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--faint); margin-bottom:9px}
+.modes{display:grid; grid-template-columns:1fr 1fr;
+  border:1px solid var(--rule); border-radius:8px; overflow:hidden}
+.modes button{appearance:none; border:0; background:transparent; cursor:pointer;
+  font-family:var(--sans); font-size:13.5px; font-weight:500; color:var(--dim);
+  padding:11px 8px; transition:background .18s, color .18s}
+.modes button + button{border-left:1px solid var(--rule)}
+.modes button:hover{color:var(--ink); background:#17171d}
+.modes button[aria-pressed=true]{background:var(--ink); color:var(--plate); font-weight:600}
+.modes button:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+.hint{margin:9px 0 0; font-size:12.5px; color:var(--dim); line-height:1.45}
+
+.readout{border-top:1px solid var(--rule-soft); padding-top:15px}
+.row{display:flex; justify-content:space-between; gap:14px; padding:5px 0;
+  font-family:var(--mono); font-size:12.5px}
+.row dt{color:var(--faint)}
+.row dd{margin:0; color:var(--ink); text-align:right}
+
+.note{display:block; position:relative; padding:11px 13px 11px 32px; border-radius:7px;
+  background:color-mix(in srgb, var(--amber) 9%, transparent);
+  border:1px solid color-mix(in srgb, var(--amber) 26%, transparent);
+  font-size:12.5px; line-height:1.45; color:#f0dcbc}
+.note::before{content:"!"; position:absolute; left:13px; top:11px;
+  font-family:var(--mono); font-weight:500; color:var(--amber)}
+.note code{color:#fff}
+.note[hidden]{display:none}
+
+.cmd{border-top:1px solid var(--rule-soft); padding-top:15px}
+.cmd pre{margin:0; padding:13px 14px; border-radius:7px; background:var(--sunk);
+  border:1px solid var(--rule-soft); font-family:var(--mono); font-size:12px;
+  line-height:1.65; color:var(--ink); white-space:pre-wrap; word-break:break-word}
+.cmd pre .flag{color:var(--accent-2)}
+.cmd pre .val{color:var(--accent)}
+
+.sheet{padding:var(--gut); border-bottom:1px solid var(--rule)}
+.sheet:last-of-type{border-bottom:0}
+.head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:4px}
+.head h2{margin:0; font-size:18px; font-weight:600; letter-spacing:-.015em}
+.head .flagname{font-family:var(--mono); font-size:12.5px; color:var(--accent-2)}
+.head .count{margin-left:auto; font-family:var(--mono); font-size:12.5px; color:var(--faint)}
+.head .count b{color:var(--ink); font-weight:500}
+.sub{margin:0 0 20px; font-size:13px; color:var(--dim)}
+.bulk{display:inline-flex; gap:5px; margin-left:12px}
+.bulk button{appearance:none; background:transparent; border:0; cursor:pointer;
+  font-family:var(--mono); font-size:12px; color:var(--faint); padding:2px 5px;
+  border-radius:4px; transition:color .16s, background .16s}
+.bulk button:hover{color:var(--ink); background:#17171d}
+
+.group{margin-bottom:26px}
+.group:last-child{margin-bottom:0}
+.grouplab{display:flex; align-items:center; gap:12px; margin-bottom:13px; font-size:11px;
+  font-weight:600; letter-spacing:.13em; text-transform:uppercase; color:var(--faint)}
+.grouplab::after{content:""; flex:1; height:1px; background:var(--rule-soft)}
+.grouplab em{font-style:normal; font-family:var(--mono); text-transform:none;
+  letter-spacing:0; font-weight:400; opacity:.8}
+
+.grid{display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(184px,1fr))}
+.grid.scenes{grid-template-columns:repeat(auto-fill,minmax(152px,1fr))}
+.thumb{appearance:none; padding:0; cursor:pointer; text-align:left; background:transparent;
+  border:0; display:block}
+.thumb .shot{display:block; position:relative; border-radius:7px; overflow:hidden;
+  background:var(--sunk); border:1px solid var(--rule-soft); aspect-ratio:4/3;
+  transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease}
+.thumb img{width:100%; height:100%; object-fit:cover; display:block;
+  transition:opacity .2s, filter .2s}
+.thumb .name{display:block; margin-top:8px; font-family:var(--mono); font-size:12px;
+  color:var(--dim); transition:color .2s}
+.thumb:hover .shot{transform:translateY(-2px); border-color:var(--dim)}
+.thumb:hover .name{color:var(--ink)}
+.thumb:focus-visible .shot{outline:2px solid var(--accent); outline-offset:2px}
+.thumb.off img{opacity:.3; filter:grayscale(.65)}
+.thumb.off .name{color:var(--faint); text-decoration:line-through; text-decoration-color:var(--rule)}
+.thumb.on .shot{border-color:color-mix(in srgb, var(--accent) 55%, transparent)}
+.thumb.pinned .shot{border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--accent), 0 8px 26px -12px var(--accent)}
+.thumb.pinned .name{color:var(--ink); font-weight:500}
+.thumb.pinned .name::after{content:" ·pinned"; color:var(--accent)}
+.thumb.auto .shot{border-color:var(--rule)}
+.thumb.auto img{opacity:.86}
+.thumb.auto .name{color:var(--dim)}
+.thumb.auto .name::after{content:" ·auto"; color:var(--faint)}
+.thumb.dead{cursor:not-allowed}
+.thumb.dead img{opacity:.16; filter:grayscale(1)}
+.thumb.dead .name{color:var(--faint); text-decoration:none}
+.deadnote{margin:0 0 13px; font-size:12.5px; color:var(--faint)}
+.focusline{display:block; margin-top:5px; font-family:var(--mono); font-size:12px; color:var(--faint)}
+.focusline b{color:var(--accent-2); font-weight:400}
+
+@media (max-width:900px){.stage{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wordmark">cloche <span>studio</span></div>
+  <div class="path"><span class="state" id="saveState">loading</span>
+    <span id="configPath"></span><i class="dot" id="dot"></i></div>
+</header>
+
+<section class="stage">
+  <figure class="preview">
+    <span class="frame" id="frame"></span>
+    <figcaption>
+      <span><b id="capPalette">—</b></span><span class="sep">/</span>
+      <span id="capScene">—</span><span class="sep">/</span>
+      <span>seed <span id="capSeed">—</span></span>
+      <span class="rolling" id="rolling"><i></i>rolling the pool</span>
+    </figcaption>
+  </figure>
+
+  <aside class="controls">
+    <div>
+      <span class="lab">Every capture</span>
+      <div class="modes" role="group">
+        <button id="mRandom" aria-pressed="true">Randomize</button>
+        <button id="mPinned" aria-pressed="false">Pin one</button>
+      </div>
+      <p class="hint" id="modeHint">Draws from the backdrops you leave switched on below.</p>
+    </div>
+    <dl class="readout">
+      <div class="row"><dt>backdrop</dt><dd id="roPalette">—</dd></div>
+      <div class="row"><dt>scene look</dt><dd id="roScene">—</dd></div>
+      <div class="row"><dt>motif</dt><dd id="roMotif">—</dd></div>
+    </dl>
+    <p class="note" id="conflict" hidden></p>
+    <div class="cmd">
+      <span class="lab">Same thing from the terminal</span>
+      <pre id="cmd"></pre>
+    </div>
+  </aside>
+</section>
+
+<section class="sheet">
+  <div class="head">
+    <h2>Backdrops</h2><span class="flagname">--palette</span>
+    <span class="bulk"><button data-bulk="pal-all">all</button><button data-bulk="pal-none">none</button></span>
+    <span class="count" id="palCount"></span>
+  </div>
+  <p class="sub">The object in frame. Every sky is drawn from noise at render time, so the seed decides the detail.</p>
+  <div class="group">
+    <div class="grouplab">Deep space <em>sampled from astrophotography</em></div>
+    <div class="grid" id="gridSpace"></div>
+  </div>
+  <div class="group">
+    <div class="grouplab">Gradient <em>soft colour fields</em></div>
+    <p class="deadnote">Out of the random rotation unless you switch one on. Neither scene looks nor motifs apply to these.</p>
+    <div class="grid" id="gridGradient"></div>
+  </div>
+  <div class="group">
+    <div class="grouplab">Pattern <em>woven and ruled</em></div>
+    <p class="deadnote">Out of the random rotation unless you switch one on. These take a motif instead of a scene look.</p>
+    <div class="grid" id="gridPattern"></div>
+  </div>
+</section>
+
+<section class="sheet">
+  <div class="head">
+    <h2>Scene looks</h2><span class="flagname">--scene</span>
+    <span class="bulk"><button data-bulk="scn-all">all</button><button data-bulk="scn-none">none</button></span>
+    <span class="count" id="scnCount"></span>
+  </div>
+  <p class="sub">How it was imaged. Leave every one off to let the seed decide.
+    <span class="focusline">shown on <b id="focusSpace"></b> &middot; hover a deep-space backdrop to see it there</span></p>
+  <div class="grid scenes" id="gridScene"></div>
+</section>
+
+<section class="sheet">
+  <div class="head">
+    <h2>Motifs</h2><span class="flagname">--motif</span>
+    <span class="bulk"><button data-bulk="mot-all">all</button><button data-bulk="mot-none">none</button></span>
+    <span class="count" id="motCount"></span>
+  </div>
+  <p class="sub">How the cloth is woven. Leave every one off to let the seed decide.
+    <span class="focusline">shown on <b id="focusPattern"></b> &middot; hover a pattern backdrop to see it there</span></p>
+  <div class="grid scenes" id="gridMotif"></div>
+</section>
+
+<script>
+const el = id => document.getElementById(id);
+const SEED = 21;                       // fixed so swatches stay comparable
+const ROLL = [3, 11, 29, 47, 58];      // hero seeds, to show the randomizer working
+let S = null, kinds = {}, sample = null, live = 0, timer = null;
+// Which backdrop the second-axis sheets are drawn on. Without this every scene
+// swatch would show the same palette and the 12 space palettes x 16 scenes
+// would be invisible.
+const focus = { space: null, pattern: null };
+
+const isSpace = n => kinds[n] === "space";
+const isPattern = n => kinds[n] === "pattern";
+const pal = () => S.polish.palettes, scn = () => S.polish.scenes, mot = () => S.polish.motifs;
+const pinned = () => S.polish.mode === "pinned";
+const listFor = kind => kind === "palette" ? pal() : kind === "scene" ? scn() : mot();
+// An empty pool does not mean "nothing selected", it means "unconstrained":
+// the picker draws from every deep-space palette. Showing that as 0 of 27 with
+// every swatch struck through misreports the default state.
+const spaceNames = () => S.options.palettes.filter(p => p.kind === "space").map(p => p.name);
+const effectivePalettes = () => pal().length ? pal() : spaceNames();
+
+function swatchSrc(name, kind){
+  // Pattern palettes get a fixed motif so the row compares colour, not weave.
+  // Without it every pattern swatch shows whatever the shared seed rolled.
+  if(kind === "palette"){
+    const motif = isPattern(name) ? "&motif=plaid" : "";
+    return `palette=${name}${motif}&seed=${SEED}&w=300&h=225`;
+  }
+  if(kind === "scene") return `palette=${focus.space}&scene=${name}&seed=${SEED}&w=260&h=195`;
+  return `palette=${focus.pattern}&motif=${name}&seed=${SEED}&w=260&h=195`;
+}
+
+function swatch(name, kind){
+  const b = document.createElement("button");
+  b.className = "thumb"; b.dataset.name = name; b.dataset.kind = kind;
+  b.innerHTML = `<span class="shot"><img alt="${name}" loading="lazy" src="/api/backdrop?${swatchSrc(name, kind)}"></span><span class="name">${name}</span>`;
+  b.onclick = () => toggle(name, kind);
+  if(kind === "palette"){
+    // Hovering a backdrop re-draws the sheets below it, so the cross product
+    // is browsable without committing to anything.
+    b.onmouseenter = () => setFocus(name);
+  }
+  return b;
+}
+
+function setFocus(name){
+  if(isSpace(name) && focus.space !== name){ focus.space = name; redraw("scene"); }
+  else if(isPattern(name) && focus.pattern !== name){ focus.pattern = name; redraw("motif"); }
+  else return;
+  el("focusSpace").textContent = focus.space;
+  el("focusPattern").textContent = focus.pattern;
+}
+
+function redraw(kind){
+  document.querySelectorAll(`.thumb[data-kind="${kind}"]`).forEach(b => {
+    b.querySelector("img").src = `/api/backdrop?${swatchSrc(b.dataset.name, kind)}`;
+  });
+}
+
+function toggle(name, kind){
+  if(pinned()){
+    if(kind === "palette"){ S.polish.palette = name; setFocus(name); }
+    else if(kind === "scene") S.polish.scene = S.polish.scene === name ? null : name;
+    else S.polish.motif = S.polish.motif === name ? null : name;
+  } else {
+    // First click on an unconstrained pool materialises what is actually in
+    // rotation, so switching one off removes one rather than leaving one.
+    if(kind === "palette" && !pal().length) S.polish.palettes = spaceNames();
+    const list = listFor(kind);
+    const at = list.indexOf(name);
+    at === -1 ? list.push(name) : list.splice(at, 1);
+  }
+  render(); save();
+}
+
+function secondAxis(palette){
+  if(isSpace(palette)) return S.polish.scene ? `&scene=${S.polish.scene}` : "";
+  if(isPattern(palette)) return S.polish.motif ? `&motif=${S.polish.motif}` : "";
+  return "";
+}
+
+function heroSrc(){
+  if(pinned()){
+    const p = S.polish.palette;
+    const q = `palette=${p}&seed=${SEED}${secondAxis(p)}`;
+    return sample ? `/api/card?${q}` : `/api/backdrop?${q}&w=880&h=610`;
+  }
+  const pool = effectivePalettes(), p = pool.length ? pool[live % pool.length] : "";
+  const q = (p ? `palette=${p}&` : "") + `seed=${ROLL[live % ROLL.length]}`;
+  return sample ? `/api/card?${q}` : `/api/backdrop?${q}&w=880&h=610`;
+}
+
+function paintHero(){
+  const img = new Image();
+  img.alt = "";
+  img.onload = () => {
+    const frame = el("frame");
+    [...frame.children].forEach(old => { old.classList.remove("live"); setTimeout(() => old.remove(), 600); });
+    frame.appendChild(img);
+    requestAnimationFrame(() => img.classList.add("live"));
+  };
+  img.src = heroSrc();
+  el("capSeed").textContent = pinned() ? SEED : ROLL[live % ROLL.length];
+}
+
+function render(){
+  const p = pinned();
+  el("mRandom").setAttribute("aria-pressed", String(!p));
+  el("mPinned").setAttribute("aria-pressed", String(p));
+  el("modeHint").textContent = p
+    ? "Locks one backdrop to every capture until you change it."
+    : "Draws from the backdrops you leave switched on below.";
+  el("rolling").style.display = p ? "none" : "inline-flex";
+
+  document.querySelectorAll(".thumb").forEach(b => {
+    const n = b.dataset.name, kind = b.dataset.kind;
+    b.classList.remove("on","off","pinned","dead");
+    if(p){
+      if(kind === "palette"){ b.classList.add(n === S.polish.palette ? "pinned" : "off"); return; }
+      const applies = kind === "scene" ? isSpace(S.polish.palette) : isPattern(S.polish.palette);
+      if(!applies){ b.classList.add("dead"); return; }
+      const held = kind === "scene" ? S.polish.scene : S.polish.motif;
+      b.classList.add(n === held ? "pinned" : "off");
+    } else if(kind === "palette"){
+      b.classList.add(effectivePalettes().includes(n) ? "on" : "off");
+    } else {
+      // No scene or motif pool means the seed decides, which is a real state,
+      // not an empty one.
+      b.classList.add(listFor(kind).length === 0 ? "auto" : listFor(kind).includes(n) ? "on" : "off");
+    }
+  });
+
+  const totals = { palette: S.options.palettes.length, scene: S.options.scenes.length, motif: S.options.motifs.length };
+  el("palCount").innerHTML = p ? `pinned to <b>${S.polish.palette || "nothing"}</b>`
+    : pal().length ? `<b>${pal().length}</b> of ${totals.palette} in rotation`
+    : `<b>all ${spaceNames().length}</b> deep-space backdrops in rotation`;
+  const poolCount = (list, total) => list.length ? `<b>${list.length}</b> of ${total} in rotation` : "seed decides";
+  el("scnCount").innerHTML = p
+    ? (isSpace(S.polish.palette) ? `pinned to <b>${S.polish.scene || "none"}</b>` : "not used by this backdrop")
+    : poolCount(scn(), totals.scene);
+  el("motCount").innerHTML = p
+    ? (isPattern(S.polish.palette) ? `pinned to <b>${S.polish.motif || "none"}</b>` : "not used by this backdrop")
+    : poolCount(mot(), totals.motif);
+  el("roPalette").textContent = p ? (S.polish.palette || "none")
+    : pal().length ? `${pal().length} of ${totals.palette} on` : `all ${spaceNames().length} deep-space`;
+  el("roScene").textContent = p ? (S.polish.scene || "seed decides")
+    : scn().length ? `${scn().length} of ${totals.scene} on` : "seed decides";
+  el("roMotif").textContent = p ? (S.polish.motif || "seed decides")
+    : mot().length ? `${mot().length} of ${totals.motif} on` : "seed decides";
+
+  const clashes = [];
+  if(p && S.polish.palette){
+    if(S.polish.scene && !isSpace(S.polish.palette))
+      clashes.push(`<code>${S.polish.scene}</code> is a scene look, which needs a deep-space backdrop`);
+    if(S.polish.motif && !isPattern(S.polish.palette))
+      clashes.push(`<code>${S.polish.motif}</code> is a motif, which needs a pattern backdrop`);
+  }
+  el("conflict").hidden = clashes.length === 0;
+  if(clashes.length) el("conflict").innerHTML =
+    `<code>${S.polish.palette}</code> is a ${kinds[S.polish.palette]} backdrop, so ${clashes.join(", and ")}. Ignored.`;
+
+  const roll = effectivePalettes();
+  el("capPalette").textContent = p ? (S.polish.palette || "—") : (roll[live % (roll.length||1)] || "any");
+  const held = p ? (isPattern(S.polish.palette) ? S.polish.motif : S.polish.scene) : null;
+  el("capScene").textContent = p ? (held || "seed decides") : "rolling";
+
+  const f = s => `<span class="flag">${s}</span>`, v = s => `<span class="val">${s}</span>`;
+  let cmd;
+  if(p){
+    cmd = `cloche config set ${f("--mode")} ${v("pinned")}`;
+    if(S.polish.palette) cmd += ` \\\n  ${f("--palette")} ${v(S.polish.palette)}`;
+    if(S.polish.scene) cmd += ` \\\n  ${f("--scene")} ${v(S.polish.scene)}`;
+    if(S.polish.motif) cmd += ` \\\n  ${f("--motif")} ${v(S.polish.motif)}`;
+  } else {
+    cmd = `cloche config set ${f("--mode")} ${v("random")}`;
+    if(pal().length) cmd += ` \\\n  ${f("--palettes")} ${v(pal().join(","))}`;
+    if(scn().length) cmd += ` \\\n  ${f("--scenes")} ${v(scn().join(","))}`;
+    if(mot().length) cmd += ` \\\n  ${f("--motifs")} ${v(mot().join(","))}`;
+  }
+  el("cmd").innerHTML = cmd;
+  paintHero();
+}
+
+function save(){
+  clearTimeout(timer);
+  el("saveState").textContent = "saving to";
+  el("dot").classList.add("busy");
+  timer = setTimeout(async () => {
+    try{
+      const res = await fetch("/api/config", {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(S.polish),
+      });
+      const body = await res.json();
+      if(!res.ok) throw new Error(body.error || res.statusText);
+      el("saveState").textContent = "saved to";
+    }catch(err){
+      el("saveState").textContent = "not saved: " + err.message;
+    }finally{
+      el("dot").classList.remove("busy");
+    }
+  }, 350);
+}
+
+async function boot(){
+  const state = await (await fetch("/api/state")).json();
+  S = { polish: state.config.polish, options: state.options };
+  S.polish.palettes ||= []; S.polish.scenes ||= []; S.polish.motifs ||= [];
+  sample = state.sample;
+  el("configPath").textContent = state.configPath;
+  el("saveState").textContent = state.exists ? "saved to" : "will save to";
+
+  state.options.palettes.forEach(p => kinds[p.name] = p.kind);
+  const byKind = k => state.options.palettes.filter(p => p.kind === k).map(p => p.name);
+  focus.space = byKind("space")[0];
+  focus.pattern = byKind("pattern")[0];
+  el("focusSpace").textContent = focus.space;
+  el("focusPattern").textContent = focus.pattern;
+
+  byKind("space").forEach(n => el("gridSpace").appendChild(swatch(n, "palette")));
+  byKind("gradient").forEach(n => el("gridGradient").appendChild(swatch(n, "palette")));
+  byKind("pattern").forEach(n => el("gridPattern").appendChild(swatch(n, "palette")));
+  state.options.scenes.forEach(n => el("gridScene").appendChild(swatch(n, "scene")));
+  state.options.motifs.forEach(n => el("gridMotif").appendChild(swatch(n, "motif")));
+
+  el("mRandom").onclick = () => { S.polish.mode = "random"; render(); save(); };
+  el("mPinned").onclick = () => {
+    S.polish.mode = "pinned";
+    S.polish.palette ||= pal()[0] || state.options.palettes[0].name;
+    setFocus(S.polish.palette);
+    render(); save();
+  };
+  document.querySelectorAll("[data-bulk]").forEach(b => b.onclick = () => {
+    const k = b.dataset.bulk;
+    if(k === "pal-all") S.polish.palettes = state.options.palettes.map(p => p.name);
+    // Clearing the palette pool restores the built-in rotation rather than
+    // leaving the picker with nothing to draw from.
+    if(k === "pal-none") S.polish.palettes = [];
+    if(k === "scn-all") S.polish.scenes = [...state.options.scenes];
+    if(k === "scn-none") S.polish.scenes = [];
+    if(k === "mot-all") S.polish.motifs = [...state.options.motifs];
+    if(k === "mot-none") S.polish.motifs = [];
+    render(); save();
+  });
+
+  render();
+  if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches){
+    setInterval(() => { if(!pinned()){ live++; paintHero(); rollCaption(); } }, 3200);
+  }
+}
+
+// caption-only refresh, so the rolling hero does not re-post the config
+function rollCaption(){
+  const roll = effectivePalettes();
+  el("capPalette").textContent = roll[live % (roll.length||1)] || "any";
+}
+boot();
+</script>
+</body>
+</html>

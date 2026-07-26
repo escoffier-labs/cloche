@@ -133,9 +133,11 @@ scene layers gas, dust lanes, starfields, and one or more focal objects on top:
   planetary nebulae, open clusters, gravitational-lensing arcs, and rare
   ultra-deep-field and Planck-CMB frames.
 
-Random styling picks a space palette. The five original gradient palettes
-(`violet-haze`, `ember-glow`, `aurora-teal`, `rose-noir`, `midnight-sky`) are
-still available by name with `--palette`.
+Twelve deep-space palettes are in the default random rotation. The nine
+gradient palettes (`violet-haze`, `ember-glow`, `aurora-teal`, `rose-noir`,
+`midnight-sky`, `sea-glass`, `peach-dusk`, `ink-wash`, `citrus-noon`) and the
+six pattern palettes stay out of it unless you name them, either with
+`--palette` or in the random pool.
 
 Pin a look with `--scene` instead of rolling the seed:
 
@@ -149,6 +151,45 @@ Scenes: `nebula`, `jwst`, `hubble`, `galaxy`, `alma`, `ring`, `butterfly`,
 `cmb`. `--scene` applies only to space palettes. On a gradient palette it is a
 no-op warning. `--palette` and `--scene` are available on `cloche capture`,
 `cloche polish`, and the matching MCP tools.
+
+## Pattern backdrops
+
+The third backdrop family: woven and ruled geometry, drawn from the seed the
+same way the space scenes are. A pattern palette carries the colours and a
+motif carries the structure, so `--palette` and `--motif` compose exactly like
+`--palette` and `--scene`.
+
+```bash
+cloche polish shot.png --palette tartan-moss --motif plaid
+cloche polish shot.png --palette blueprint --motif grid --style-seed 42
+```
+
+Pattern palettes: `tartan-moss`, `oxford-navy`, `blueprint`, `ledger-cream`,
+`picnic-red`, `workshop-ochre`. The last two are light grounds, which give a
+card a very different weight from the dark skies.
+
+Motifs: `plaid`, `gingham`, `stripe`, `rule`, `grid`, `diagonal`, `chevron`,
+`dot`, `crosshatch`, `weave`, `herringbone`, `houndstooth`. `--motif` applies
+only to pattern palettes; on any other backdrop it is a no-op warning, the same
+way `--scene` behaves off a space palette.
+
+Nothing is a tiled bitmap. Plaid builds a mirrored tartan sett and crosses it
+both ways; houndstooth is derived from a 2/2 twill with a four-thread colour
+repeat, which is what actually grows the teeth. Both resolve cleanly at any card
+size.
+
+## How many backdrops there are
+
+Palettes and second axes multiply:
+
+| Family | Palettes | Second axis | Combinations |
+|---|---|---|---|
+| Deep space | 12 | 16 scenes | 192 |
+| Pattern | 6 | 12 motifs | 72 |
+| Gradient | 9 | none | 9 |
+
+273 in all, and every seed varies the result again. `cloche studio` shows the
+cross product: hover a backdrop and the scene or motif sheet redraws on it.
 
 ## Backdrop Preferences
 
@@ -165,6 +206,7 @@ cloche config set --mode pinned --palette orion-emission --scene jwst
 # Or keep it random, but only across the backdrops you like.
 cloche config set --mode random --palettes carina-hubble,pleiades-reflection
 cloche config set --scenes alma,veil
+cloche config set --palettes tartan-moss,oxford-navy --motifs plaid,houndstooth
 
 cloche config set --clear all         # back to defaults
 ```
@@ -179,25 +221,49 @@ path outright):
     "mode": "random",
     "palette": null,
     "scene": null,
+    "motif": null,
     "palettes": ["carina-hubble", "pleiades-reflection"],
-    "scenes": ["alma", "veil"]
+    "scenes": ["alma", "veil"],
+    "motifs": ["plaid", "houndstooth"]
   }
 }
 ```
 
 - `mode` is `random` or `pinned`. `pinned` applies `palette`/`scene`; `random`
   leaves them on file and draws from the pools instead.
-- `palettes` and `scenes` are the random pool. Empty means no constraint: every
-  space palette, and the seed's own scene pick. Naming a gradient palette here
-  is the only way to get the gradient look back into the random rotation.
+- `palettes`, `scenes`, and `motifs` are the random pools. Empty means no
+  constraint: every deep-space palette, and the seed's own scene or motif pick.
+  Naming a gradient or pattern palette here is the only way to get those
+  families into the random rotation.
 - Precedence is flag, then config, then the built-in random pick, so a one-off
   `--palette` always wins.
 - A missing file means defaults. A malformed one is reported in the result's
   `warnings` and falls back to defaults rather than costing you the capture.
 
 `cloche config show` and `cloche config options` emit the same JSON contract as
-every other command (`cloche schema --for config`), so a picker UI can read the
-menu and the current selection without parsing help text.
+every other command (`cloche schema --for config`).
+
+### cloche studio
+
+If you would rather see the backdrops than read their names:
+
+```bash
+cloche studio              # http://127.0.0.1:4317
+cloche studio --port 0     # let the OS pick a port
+cloche studio --print-url  # print the URL as JSON and exit
+```
+
+A local page showing every backdrop and scene as a real render. Click to switch
+one in or out of the random pool, or switch to Pin one to lock a single
+backdrop. Changes are written to the same `config.json` the CLI reads, and the
+page shows the equivalent `cloche config set` for whatever you have selected.
+
+The hero preview uses your newest capture, so the page will display whatever you
+last screenshotted. Worth knowing before you screen-share it.
+
+It binds to `127.0.0.1` by default and has no authentication, because anything
+that can reach the port can rewrite your styling config. `--host` widens that:
+only use it on a network you trust.
 
 ## Command Reference
 
@@ -220,8 +286,12 @@ cloche reels render --engine hyperframes --input raw.mp4 --out demo.mp4 --cues c
 cloche config show
 cloche config options
 cloche config set --mode pinned --palette orion-emission --scene jwst
+cloche config set --mode pinned --palette tartan-moss --motif houndstooth
 cloche config set --mode random --palettes carina-hubble,pleiades-reflection
+cloche config set --motifs plaid,gingham,houndstooth
 cloche config set --clear all
+cloche studio
+cloche studio --port 0 --print-url
 cloche gallery --limit 10
 cloche gallery --root /tmp --html /tmp/cloche.html --title "My Shots" --open
 cloche latest

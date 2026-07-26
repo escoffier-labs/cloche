@@ -54,6 +54,7 @@ pub enum Command {
     CodexPayload(crate::codex::CodexPayloadArgs),
     Mcp(crate::mcp::McpArgs),
     Setup(crate::setup::SetupArgs),
+    Studio(crate::studio::StudioArgs),
 }
 
 /// Style an existing image into a Cloche presentation card: rounded window,
@@ -73,6 +74,10 @@ pub struct PolishArgs {
     /// omitted. Only applies to space palettes.
     #[arg(long, value_parser = scene_name_parser())]
     pub scene: Option<String>,
+    /// Pin the geometric motif (e.g. `plaid`, `stripe`, `grid`); random when
+    /// omitted. Only applies to pattern palettes.
+    #[arg(long, value_parser = motif_name_parser())]
+    pub motif: Option<String>,
     /// Seed for deterministic styling.
     #[arg(long)]
     pub style_seed: Option<u64>,
@@ -169,6 +174,10 @@ fn scene_name_parser() -> clap::builder::PossibleValuesParser {
     clap::builder::PossibleValuesParser::new(polish::scene_names())
 }
 
+fn motif_name_parser() -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new(polish::motif_names())
+}
+
 #[derive(Debug, Args)]
 pub struct CaptureArgs {
     #[arg(long, value_enum, default_value = "active")]
@@ -196,6 +205,10 @@ pub struct CaptureArgs {
     /// to space palettes.
     #[arg(long, value_parser = scene_name_parser())]
     pub scene: Option<String>,
+    /// Pin the geometric motif (e.g. `plaid`, `stripe`, `grid`). Only applies
+    /// to pattern palettes.
+    #[arg(long, value_parser = motif_name_parser())]
+    pub motif: Option<String>,
     #[arg(long)]
     pub style_seed: Option<u64>,
     /// Copy the card (or the raw shot with --presentation raw) to the
@@ -307,6 +320,9 @@ pub struct ConfigSetArgs {
     /// Scene to pin. Space palettes only.
     #[arg(long, value_parser = scene_name_parser())]
     pub scene: Option<String>,
+    /// Motif to pin. Pattern palettes only.
+    #[arg(long, value_parser = motif_name_parser())]
+    pub motif: Option<String>,
     /// Comma-separated palettes the random picker may choose from. Replaces the
     /// stored pool.
     #[arg(long, value_delimiter = ',', value_parser = palette_name_parser())]
@@ -315,6 +331,10 @@ pub struct ConfigSetArgs {
     /// stored pool.
     #[arg(long, value_delimiter = ',', value_parser = scene_name_parser())]
     pub scenes: Option<Vec<String>>,
+    /// Comma-separated motifs the random picker may choose from. Replaces the
+    /// stored pool.
+    #[arg(long, value_delimiter = ',', value_parser = motif_name_parser())]
+    pub motifs: Option<Vec<String>>,
     /// Reset a preference to its default. Repeatable.
     #[arg(long = "clear", value_enum)]
     pub clear: Vec<ClearTarget>,
@@ -335,10 +355,14 @@ pub enum ClearTarget {
     Palette,
     /// Drop the pinned scene.
     Scene,
+    /// Drop the pinned motif.
+    Motif,
     /// Empty the random palette pool, restoring every space palette.
     Palettes,
     /// Empty the random scene pool.
     Scenes,
+    /// Empty the random motif pool.
+    Motifs,
     /// Reset every polish preference.
     All,
 }
@@ -442,6 +466,7 @@ pub fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error::Error>
                                 args.style_seed,
                                 args.palette.as_deref(),
                                 args.scene.as_deref(),
+                                args.motif.as_deref(),
                                 &mut warnings,
                             );
                             match polish::render_codex_card(
@@ -940,6 +965,7 @@ fn run_polish(args: PolishArgs, config_path: &Path) -> crate::contract::PolishRe
             args.style_seed,
             args.palette.as_deref(),
             args.scene.as_deref(),
+            args.motif.as_deref(),
             &mut warnings,
         );
         let parent_ready = card_path
@@ -1193,8 +1219,10 @@ fn apply_config_set(prefs: &mut config::PolishPrefs, args: &ConfigSetArgs) {
         match target {
             ClearTarget::Palette => prefs.palette = None,
             ClearTarget::Scene => prefs.scene = None,
+            ClearTarget::Motif => prefs.motif = None,
             ClearTarget::Palettes => prefs.palettes.clear(),
             ClearTarget::Scenes => prefs.scenes.clear(),
+            ClearTarget::Motifs => prefs.motifs.clear(),
             ClearTarget::All => *prefs = config::PolishPrefs::default(),
         }
     }
@@ -1210,11 +1238,17 @@ fn apply_config_set(prefs: &mut config::PolishPrefs, args: &ConfigSetArgs) {
     if let Some(scene) = args.scene.clone() {
         prefs.scene = Some(scene);
     }
+    if let Some(motif) = args.motif.clone() {
+        prefs.motif = Some(motif);
+    }
     if let Some(palettes) = args.palettes.clone() {
         prefs.palettes = palettes;
     }
     if let Some(scenes) = args.scenes.clone() {
         prefs.scenes = scenes;
+    }
+    if let Some(motifs) = args.motifs.clone() {
+        prefs.motifs = motifs;
     }
 }
 
@@ -1244,6 +1278,10 @@ fn style_options() -> crate::contract::StyleOptions {
             })
             .collect(),
         scenes: polish::scene_names()
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        motifs: polish::motif_names()
             .into_iter()
             .map(str::to_string)
             .collect(),
@@ -1338,6 +1376,8 @@ mod tests {
             scene: None,
             palettes: None,
             scenes: None,
+            motif: None,
+            motifs: None,
             clear: Vec::new(),
             format: OutputFormat::Json,
         }
@@ -1414,6 +1454,7 @@ mod tests {
             out: None,
             palette: None,
             scene: None,
+            motif: None,
             style_seed: Some(7),
             format: OutputFormat::Json,
         });
@@ -1443,6 +1484,7 @@ mod tests {
             out: Some(out.clone()),
             palette: Some("aurora-teal".to_string()),
             scene: None,
+            motif: None,
             style_seed: Some(11),
             format: OutputFormat::Json,
         });
@@ -1475,6 +1517,7 @@ mod tests {
                 out: None,
                 palette: None,
                 scene: None,
+                motif: None,
                 style_seed: Some(4),
                 format: OutputFormat::Json,
             },
@@ -1508,6 +1551,7 @@ mod tests {
                 out: None,
                 palette: Some("ember-glow".to_string()),
                 scene: None,
+                motif: None,
                 style_seed: Some(4),
                 format: OutputFormat::Json,
             },
@@ -1639,6 +1683,7 @@ mod tests {
             out: Some(dir.join("card.jpg")),
             palette: None,
             scene: None,
+            motif: None,
             style_seed: Some(3),
             format: OutputFormat::Json,
         });
@@ -1709,6 +1754,7 @@ mod tests {
             out: None,
             palette: None,
             scene: None,
+            motif: None,
             style_seed: Some(13),
             format: OutputFormat::Json,
         });
@@ -1725,6 +1771,7 @@ mod tests {
             out: None,
             palette: None,
             scene: None,
+            motif: None,
             style_seed: Some(5),
             format: OutputFormat::Json,
         });
