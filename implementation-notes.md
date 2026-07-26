@@ -625,3 +625,14 @@ family, and a selection function that lets the table grow.
   picker was actually drawing from all twelve deep-space palettes. The page now
   distinguishes an explicit pool from the default, and the first click on an
   unconstrained pool materialises it so switching one off removes one.
+
+## Terrain backdrops (2026-07-26)
+
+- **Mesa used 3 visual iterations and remains too regular and low-contrast at
+  padding width.** A better next pass would replace the repeated cell profile
+  with 2 or 3 seeded off-frame plateaus, then give each plateau a darker cliff
+  face and irregular talus edge.
+- **Badlands used 3 visual iterations and its gullies still read as vertical
+  drips instead of eroded ridges.** A better next pass would build overlapping
+  triangular ridge profiles first, then cut 2 or 3 branching washes through
+  each face instead of repeating a sine channel across the canvas.

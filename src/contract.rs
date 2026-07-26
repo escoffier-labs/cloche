@@ -99,14 +99,16 @@ pub struct StyleOptions {
     pub scenes: Vec<String>,
     pub motifs: Vec<String>,
     pub skies: Vec<String>,
+    pub terrains: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PaletteOption {
     pub name: String,
-    /// `gradient`, `space`, `pattern`, or `sky`. Scenes apply only to space
-    /// palettes, motifs only to pattern palettes, skies only to sky palettes.
+    /// `gradient`, `space`, `pattern`, `sky`, or `terrain`. Scenes apply only
+    /// to space palettes, motifs only to pattern palettes, skies only to sky
+    /// palettes, terrains only to terrain palettes.
     pub kind: String,
 }
 
@@ -300,5 +302,22 @@ mod tests {
         let parsed: AppshotResult =
             serde_json::from_value(value).expect("deserialize legacy outputDir");
         assert_eq!(parsed.out_dir, PathBuf::from("/tmp/legacy-shot"));
+    }
+
+    #[test]
+    fn style_options_expose_the_terrain_axis() {
+        let options = super::StyleOptions {
+            palettes: Vec::new(),
+            scenes: Vec::new(),
+            motifs: Vec::new(),
+            skies: Vec::new(),
+            terrains: vec!["dunes".to_string(), "mesa".to_string()],
+        };
+        let value = serde_json::to_value(&options).expect("serialize");
+        assert_eq!(
+            value["terrains"],
+            json!(["dunes", "mesa"]),
+            "terrains must serialize under camelCase key"
+        );
     }
 }
