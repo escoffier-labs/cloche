@@ -124,6 +124,7 @@ fn tool_definitions() -> Value {
                     "palette": { "type": "string", "enum": crate::polish::palette_names(), "description": "Backdrop palette for the card; falls back to the user's cloche config, then a random pick." },
                     "scene": { "type": "string", "enum": crate::polish::scene_names(), "description": "Pin the deep-space scene look (jwst, alma, cmb, etc.). Only applies to space palettes." },
                     "motif": { "type": "string", "enum": crate::polish::motif_names(), "description": "Pin the geometric motif (plaid, stripe, grid, etc.). Only applies to pattern palettes." },
+                    "sky": { "type": "string", "enum": crate::polish::sky_names(), "description": "Pin the sky condition (bolt, mammatus, aurora, etc.). Only applies to sky palettes." },
                     "styleSeed": { "type": "integer" },
                     "clipboard": { "type": "boolean", "description": "Copy the card to the system clipboard after capture." },
                     "format": { "type": "string", "enum": ["json"], "default": "json", "description": "Output format. The MCP wrapper always passes --format json." }
@@ -142,6 +143,7 @@ fn tool_definitions() -> Value {
                     "palette": { "type": "string", "enum": crate::polish::palette_names(), "description": "Backdrop palette (gradient or deep-space scene); random when omitted." },
                     "scene": { "type": "string", "enum": crate::polish::scene_names(), "description": "Pin the deep-space scene look (jwst, alma, cmb, etc.); random when omitted. Only applies to space palettes." },
                     "motif": { "type": "string", "enum": crate::polish::motif_names(), "description": "Pin the geometric motif (plaid, stripe, grid, etc.); random when omitted. Only applies to pattern palettes." },
+                    "sky": { "type": "string", "enum": crate::polish::sky_names(), "description": "Pin the sky condition (bolt, mammatus, aurora, etc.); random when omitted. Only applies to sky palettes." },
                     "styleSeed": { "type": "integer", "description": "Seed for deterministic styling." }
                 },
                 "required": ["input"]
@@ -225,6 +227,10 @@ pub fn tool_command_args(name: &str, arguments: &Value) -> Result<Vec<String>, S
                 args.push("--scene".to_string());
                 args.push(value);
             }
+            if let Some(value) = string_arg(arguments, "sky") {
+                args.push("--sky".to_string());
+                args.push(value);
+            }
             if let Some(value) = string_arg(arguments, "motif") {
                 args.push("--motif".to_string());
                 args.push(value);
@@ -254,6 +260,10 @@ pub fn tool_command_args(name: &str, arguments: &Value) -> Result<Vec<String>, S
             }
             if let Some(value) = string_arg(arguments, "scene") {
                 args.push("--scene".to_string());
+                args.push(value);
+            }
+            if let Some(value) = string_arg(arguments, "sky") {
+                args.push("--sky".to_string());
                 args.push(value);
             }
             if let Some(value) = string_arg(arguments, "motif") {

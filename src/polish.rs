@@ -31,6 +31,8 @@ pub enum BackdropKind {
     Space,
     /// Procedural geometric cloth or paper: plaids, stripes, rules, weaves.
     Pattern,
+    /// Procedural sky: cloud decks, storms, lightning, twilight, aurora.
+    Sky,
 }
 
 struct Palette {
@@ -90,10 +92,28 @@ const fn pattern(
     }
 }
 
+/// Sky palette stops read as altitude, not as a generic ramp: stop 0 is the
+/// zenith, stop 1 the middle of the sky, stop 2 the horizon. `glow_a` is the
+/// light source (sun, bolt core, auroral emission) and `glow_b` is the cloud
+/// shadow. `sky.rs` relies on that ordering.
+const fn sky(name: &'static str, stops: [[u8; 3]; 3], glow_a: [u8; 3], glow_b: [u8; 3]) -> Palette {
+    Palette {
+        name,
+        kind: BackdropKind::Sky,
+        stops,
+        glow_a,
+        glow_b,
+    }
+}
+
 /// Space palette colors are sampled from astrophotography of the named
 /// objects (emission pinks, reflection blues, dust golds); stops run
 /// dark-to-mid so `design.rs` still reads stop 0 as the canvas base.
-const PALETTES: [Palette; 27] = [
+///
+/// Sky palette colors are sampled the same way, from photographs of the named
+/// conditions: supercell navy over underlit anvil gold, mammatus gray-violet,
+/// blue-hour navy, aurora teal.
+const PALETTES: [Palette; 34] = [
     gradient(
         "violet-haze",
         [[49, 29, 130], [112, 52, 224], [44, 84, 228]],
@@ -256,6 +276,60 @@ const PALETTES: [Palette; 27] = [
         [232, 196, 120],
         [96, 112, 88],
     ),
+    // Twilight, straight off a blue-hour frame: navy at both ends with a
+    // lighter band through the middle. The quietest sky palette, and the one
+    // that sits behind a screenshot most politely.
+    sky(
+        "blue-hour",
+        [[0, 33, 87], [1, 79, 123], [0, 43, 88]],
+        [127, 168, 196],
+        [0, 22, 58],
+    ),
+    // Warm light rimming a dark cloud mass. The rim is the effect, so `glow_a`
+    // runs much brighter than the stops.
+    sky(
+        "golden-hour",
+        [[38, 67, 78], [136, 129, 115], [233, 200, 157]],
+        [250, 219, 168],
+        [43, 46, 37],
+    ),
+    // Deep navy crown over an underlit anvil, base near black.
+    sky(
+        "supercell",
+        [[13, 34, 62], [23, 48, 88], [216, 193, 169]],
+        [247, 228, 193],
+        [2, 3, 1],
+    ),
+    // Gray-violet pouches. The narrowest range in the table on purpose:
+    // mammatus is a low-contrast condition and reads wrong if pushed.
+    sky(
+        "mammatus",
+        [[156, 152, 164], [136, 129, 143], [111, 106, 118]],
+        [187, 176, 182],
+        [85, 80, 92],
+    ),
+    // Teal emission with a green-white fringe and deep blue on the flank.
+    sky(
+        "aurora-curtain",
+        [[18, 49, 79], [1, 127, 138], [5, 114, 139]],
+        [100, 212, 185],
+        [10, 62, 87],
+    ),
+    // High ice on open blue; the only sky palette that runs light at the base.
+    sky(
+        "cirrus-blue",
+        [[94, 141, 194], [131, 178, 226], [201, 227, 248]],
+        [255, 255, 255],
+        [127, 160, 189],
+    ),
+    // Magenta alpenglow in a narrow mid band against near black. Kept narrow
+    // deliberately: widen the band and it turns garish.
+    sky(
+        "alpenglow",
+        [[23, 31, 48], [116, 38, 69], [12, 13, 17]],
+        [160, 36, 71],
+        [15, 20, 27],
+    ),
 ];
 
 #[derive(Debug, Clone)]
@@ -280,6 +354,8 @@ pub struct PresentationStyle {
     pub scene: Option<crate::space::SceneKind>,
     /// Optional pinned pattern motif; `None` lets the seed pick at random.
     pub motif: Option<crate::pattern::MotifKind>,
+    /// Optional pinned sky condition; `None` lets the seed pick at random.
+    pub sky: Option<crate::sky::SkyKind>,
 }
 
 pub fn random_style() -> PresentationStyle {
@@ -306,6 +382,16 @@ pub fn motif_from_name(name: &str) -> Option<crate::pattern::MotifKind> {
     crate::pattern::MotifKind::from_name(name)
 }
 
+/// All sky names accepted by `--sky` / [`sky_from_name`], in menu order.
+pub fn sky_names() -> Vec<&'static str> {
+    crate::sky::SkyKind::NAMES.to_vec()
+}
+
+/// Parse a `--sky` value into a [`crate::sky::SkyKind`].
+pub fn sky_from_name(name: &str) -> Option<crate::sky::SkyKind> {
+    crate::sky::SkyKind::from_name(name)
+}
+
 impl PresentationStyle {
     /// Whether this style paints a procedural space scene.
     pub fn is_space(&self) -> bool {
@@ -315,6 +401,11 @@ impl PresentationStyle {
     /// Whether this style paints a geometric pattern.
     pub fn is_pattern(&self) -> bool {
         self.backdrop == BackdropKind::Pattern
+    }
+
+    /// Whether this style paints a procedural sky.
+    pub fn is_sky(&self) -> bool {
+        self.backdrop == BackdropKind::Sky
     }
 }
 
@@ -337,6 +428,7 @@ pub fn palette_catalog() -> Vec<(&'static str, &'static str)> {
                 BackdropKind::Gradient => "gradient",
                 BackdropKind::Space => "space",
                 BackdropKind::Pattern => "pattern",
+                BackdropKind::Sky => "sky",
             };
             (palette.name, kind)
         })
@@ -359,7 +451,7 @@ pub fn style_with_palette(seed: u64, palette_name: &str) -> Option<PresentationS
 }
 
 pub fn style_from_seed(seed: u64) -> PresentationStyle {
-    style_from_seed_in_pool(seed, &[], &[], &[])
+    style_from_seed_in_pool(seed, &[], &[], &[], &[])
 }
 
 /// FNV-1a, hand-rolled because `DefaultHasher` is explicitly not stable across
@@ -406,6 +498,7 @@ pub fn style_from_seed_in_pool(
     palettes: &[String],
     scenes: &[String],
     motifs: &[String],
+    skies: &[String],
 ) -> PresentationStyle {
     let allowed: Vec<&Palette> = PALETTES
         .iter()
@@ -450,6 +543,7 @@ pub fn style_from_seed_in_pool(
         glow_b_pos: (rng.random_range(0.05..=0.45), rng.random_range(0.72..=1.0)),
         scene: None,
         motif: None,
+        sky: None,
     };
 
     // A pooled second axis is pinned here rather than filtered inside the
@@ -470,6 +564,14 @@ pub fn style_from_seed_in_pool(
             .filter(|known| motifs.iter().any(|name| name == known))
             .collect();
         style.motif = pick_by_affinity(seed, &allowed).and_then(motif_from_name);
+    }
+    if style.is_sky() && !skies.is_empty() {
+        let allowed: Vec<&str> = crate::sky::SkyKind::NAMES
+            .iter()
+            .copied()
+            .filter(|known| skies.iter().any(|name| name == known))
+            .collect();
+        style.sky = pick_by_affinity(seed, &allowed).and_then(sky_from_name);
     }
     style
 }
@@ -685,6 +787,7 @@ fn backdrop(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
     match style.backdrop {
         BackdropKind::Space => return crate::space::render(width, height, style),
         BackdropKind::Pattern => return crate::pattern::render(width, height, style),
+        BackdropKind::Sky => return crate::sky::render(width, height, style),
         BackdropKind::Gradient => {}
     }
     let stops = style.stops.map(to_f32);
@@ -939,7 +1042,7 @@ mod tests {
         // The pool argument must not change the result for a given seed.
         let input = test_input(160, 120);
         for seed in 0..16 {
-            let base = style_from_seed_in_pool(seed, &[], &[], &[]);
+            let base = style_from_seed_in_pool(seed, &[], &[], &[], &[]);
             let pooled = style_from_seed(seed);
             assert_eq!(pooled.palette_name, base.palette_name, "seed {seed}");
             assert_eq!(pooled.scene, None, "seed {seed}");
@@ -956,7 +1059,7 @@ mod tests {
         let pool = vec!["aurora-teal".to_string(), "lagoon-trifid".to_string()];
         let mut seen: Vec<String> = Vec::new();
         for seed in 0..64 {
-            let style = style_from_seed_in_pool(seed, &pool, &[], &[]);
+            let style = style_from_seed_in_pool(seed, &pool, &[], &[], &[]);
             assert!(
                 pool.contains(&style.palette_name),
                 "seed {seed} escaped the pool with {}",
@@ -975,7 +1078,7 @@ mod tests {
         // The default rotation is space-only, so an explicit gradient pool is
         // the only way back to the legacy look without naming it per run.
         let pool = vec!["ember-glow".to_string()];
-        let style = style_from_seed_in_pool(5, &pool, &[], &[]);
+        let style = style_from_seed_in_pool(5, &pool, &[], &[], &[]);
         assert_eq!(style.palette_name, "ember-glow");
         assert!(!style.is_space());
     }
@@ -985,7 +1088,7 @@ mod tests {
         let scenes = vec!["alma".to_string(), "veil".to_string()];
         let allowed = [scene_from_name("alma"), scene_from_name("veil")];
         for seed in 0..32 {
-            let style = style_from_seed_in_pool(seed, &[], &scenes, &[]);
+            let style = style_from_seed_in_pool(seed, &[], &scenes, &[], &[]);
             assert!(
                 allowed.contains(&style.scene),
                 "seed {seed} produced {:?}",
@@ -998,14 +1101,14 @@ mod tests {
     fn scene_pool_is_ignored_for_gradient_palettes() {
         let palettes = vec!["ember-glow".to_string()];
         let scenes = vec!["alma".to_string()];
-        let style = style_from_seed_in_pool(3, &palettes, &scenes, &[]);
+        let style = style_from_seed_in_pool(3, &palettes, &scenes, &[], &[]);
         assert_eq!(style.scene, None);
     }
 
     #[test]
     fn unknown_pool_names_fall_back_to_the_default_pool() {
         let palettes = vec!["hotdog-stand".to_string()];
-        let style = style_from_seed_in_pool(11, &palettes, &[], &[]);
+        let style = style_from_seed_in_pool(11, &palettes, &[], &[], &[]);
         assert_eq!(style.palette_name, style_from_seed(11).palette_name);
         assert!(style.is_space());
     }
@@ -1154,7 +1257,7 @@ mod tests {
         let palettes = vec!["tartan-moss".to_string()];
         let allowed = [motif_from_name("plaid"), motif_from_name("grid")];
         for seed in 0..40 {
-            let style = style_from_seed_in_pool(seed, &palettes, &[], &motifs);
+            let style = style_from_seed_in_pool(seed, &palettes, &[], &motifs, &[]);
             assert!(
                 allowed.contains(&style.motif),
                 "seed {seed}: {:?}",
@@ -1168,7 +1271,7 @@ mod tests {
         let motifs = vec!["plaid".to_string()];
         let palettes = vec!["orion-emission".to_string()];
         assert_eq!(
-            style_from_seed_in_pool(3, &palettes, &[], &motifs).motif,
+            style_from_seed_in_pool(3, &palettes, &[], &motifs, &[]).motif,
             None
         );
     }
@@ -1195,6 +1298,7 @@ mod tests {
                 BackdropKind::Gradient => "gradient",
                 BackdropKind::Space => "space",
                 BackdropKind::Pattern => "pattern",
+                BackdropKind::Sky => "sky",
             };
             assert_eq!(kind, &expected, "{name}");
         }

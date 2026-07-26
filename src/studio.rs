@@ -300,6 +300,10 @@ fn state_value() -> serde_json::Value {
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
+            skies: polish::sky_names()
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
         },
         sample: newest_capture(),
         warnings,
@@ -340,6 +344,12 @@ fn save_body(body: &[u8]) -> Result<(), String> {
             return Err(format!("unknown motif: {name}"));
         }
     }
+    let known_sky: Vec<&str> = polish::sky_names();
+    for name in prefs.skies.iter().chain(prefs.sky.iter()) {
+        if !known_sky.contains(&name.as_str()) {
+            return Err(format!("unknown sky: {name}"));
+        }
+    }
     let path = config::path();
     let (mut stored, _) = config::load_from(&path);
     stored.polish = prefs;
@@ -362,6 +372,11 @@ fn style_from_query(query: &str) -> polish::PresentationStyle {
         && style.is_pattern()
     {
         style.motif = Some(motif);
+    }
+    if let Some(sky) = query_get(query, "sky").and_then(|n| polish::sky_from_name(&n))
+        && style.is_sky()
+    {
+        style.sky = Some(sky);
     }
     style
 }
