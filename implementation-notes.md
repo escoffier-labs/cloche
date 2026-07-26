@@ -628,11 +628,22 @@ family, and a selection function that lets the table grow.
 
 ## Terrain backdrops (2026-07-26)
 
-- **Mesa used 3 visual iterations and remains too regular and low-contrast at
-  padding width.** A better next pass would replace the repeated cell profile
-  with 2 or 3 seeded off-frame plateaus, then give each plateau a darker cliff
-  face and irregular talus edge.
-- **Badlands used 3 visual iterations and its gullies still read as vertical
-  drips instead of eroded ridges.** A better next pass would build overlapping
-  triangular ridge profiles first, then cut 2 or 3 branching washes through
-  each face instead of repeating a sine channel across the canvas.
+- **User-authorized fresh correction (mesa + badlands).** After the original
+  stopping rule fired, the user authorized another pass. Both scenes passed
+  visual inspection on the second render of this pass at seed 7 and 440×300.
+  Including the original work and the intervening discarded attempt, each
+  scene consumed 6 render-and-look iterations.
+- **Mesa (iteration 2).** Edge-anchored broad plateaus: left and right lanes
+  sit partly off-frame with ~quarter-canvas half-width and taller relief; an
+  optional smaller center lane may appear. Flat caps and stepped/tapered
+  inward shoulders are preserved. `fresh_profiles_mesa_reaches_both_outer_bands`
+  guards padding-band relief at seed 7 / 440×300. The accepted render carries
+  stepped plateau shoulders in both outer bands, outside the centered capture.
+- **Badlands (iteration 2).** Four or five broad overlapping triangular ridges,
+  including off-frame edge anchors, plus a low relief floor so the silhouette
+  never returns to open ground between peaks. Slope lighting is softened
+  (wider sample, squared face term, lower mix) to avoid bright full-height
+  seam highlights. Horizontal strata and localized diagonal washes are kept.
+  `fresh_profiles_badlands_stays_continuous` guards ridge-body continuity at
+  seed 7 / 440×300. The accepted render reads as one layered ridge chain
+  without the earlier fence-like gaps or vertical drips.

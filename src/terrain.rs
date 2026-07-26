@@ -91,6 +91,8 @@ struct Terrain {
     /// Where the light comes from, in canvas fractions. Off-frame is fine and
     /// usually better: it puts the lit edge in the padding band.
     light: (f32, f32),
+    /// Canvas width in pixels; anchored profiles use horizontal fractions of this.
+    width: f32,
 }
 
 pub fn render(width: u32, height: u32, style: &PresentationStyle) -> RgbaImage {
@@ -136,6 +138,7 @@ impl Terrain {
             coverage,
             features_across,
             light,
+            width: _width.max(1) as f32,
         }
     }
 }
@@ -167,8 +170,8 @@ fn base_layer(width: u32, height: u32, style: &PresentationStyle, terrain: &Terr
         // split itself with a broad x-only field so their skyline rolls.
         let local_horizon = match terrain.kind {
             TerrainKind::Dunes => dune_horizon(fx, scale, terrain),
-            TerrainKind::Mesa => mesa_profile(fx, scale, terrain).0,
-            TerrainKind::Badlands => badlands_horizon(fx, scale, terrain),
+            TerrainKind::Mesa => mesa_profile(fx, terrain).0,
+            TerrainKind::Badlands => badlands_horizon(fx, terrain),
             _ => terrain.horizon,
         };
 
@@ -323,10 +326,8 @@ fn dune_horizon(fx: f32, scale: f32, terrain: &Terrain) -> f32 {
     (terrain.horizon - 0.025 - broad * 0.13 - ridge * 0.035).clamp(0.20, 0.78)
 }
 
-/// Mesa: a few off-center stepped table silhouettes, stratified horizontal
-/// bands, talus texture at the bases. The tables are placed by a jittered cell
-/// grid walked over a 3x3 neighbourhood so a table wider than its cell is not
-/// clipped square at the border.
+/// Mesa: two or three anchored horizontal table lanes with stepped shoulders,
+/// stratified bands, and darker cliff-face shading between open ground.
 fn structure_mesa(base: [f32; 3], ctx: &StructureCtx) -> [f32; 3] {
     let terrain = ctx.terrain;
     let v = ctx.v;
@@ -337,69 +338,117 @@ fn structure_mesa(base: [f32; 3], ctx: &StructureCtx) -> [f32; 3] {
     let shade = ctx.shade;
     let horizon_color = ctx.horizon_color;
     let seed = ctx.seed;
-    let (top, best_dist) = mesa_profile(fx, scale, terrain);
+    let (top, best_dist, on_shoulder) = mesa_profile(fx, terrain);
     let ground_mask = smoothstep_range(v, top - 0.015, top + 0.025);
     if ground_mask <= 0.0 {
         return base;
     }
-    // Stratified horizontal bands across the whole ground: sediment layers.
     let strata = fbm(fx / (scale * 0.25), fy / (scale * 0.04), seed ^ 0x6A6A, 4);
     let strata_amt = smoothstep_range(strata, 0.42, 0.62) * 0.18 * ground_mask;
-    // Talus: rubble texture where a mesa base meets the ground.
     let talus = warped_fbm(fx / (scale * 0.2), fy / (scale * 0.2), seed ^ 0x7A11, 3);
     let talus_amt = smoothstep_range(talus, 0.50, 0.70) * 0.12 * ground_mask * terrain.coverage;
 
-    // Above the common ground line this is the mesa body; below it the scene
-    // becomes talus and open desert. This vertical gate prevents a cell's
-    // rectangular influence from extending to the bottom edge.
     let above_ground = 1.0 - smoothstep_range(v, terrain.horizon - 0.015, terrain.horizon + 0.035);
     let table = ground_mask * above_ground * terrain.coverage;
     let body = mix3(base, shade, (table * 0.58).min(0.68));
-    // Rim the table top toward the light so the plateau reads as lit from one
-    // side rather than a flat cutout.
-    let rim = (1.0 - best_dist).max(0.0) * table;
-    let lit = mix3(body, light, (rim * 0.5).min(0.4));
+    // Stepped shoulders and cliff faces read darker than the flat cap.
+    let cliff = on_shoulder * table;
+    let faced = mix3(body, shade, (cliff * 0.55).min(0.62));
+    let rim = (1.0 - best_dist).max(0.0) * table * (1.0 - on_shoulder * 0.85);
+    let lit = mix3(faced, light, (rim * 0.5).min(0.4));
     let banded = mix3(lit, horizon_color, strata_amt);
     mix3(banded, shade, talus_amt)
 }
 
-fn mesa_profile(fx: f32, scale: f32, terrain: &Terrain) -> (f32, f32) {
-    let cell = scale * 1.4;
-    let gx = fx / cell.max(1.0);
-    let base_cx = gx.floor();
-    let mut best_height = 0.0_f32;
-    let mut best_dist = 1.0_f32;
-    for ox in -1..=1 {
-        let cx = base_cx + ox as f32;
-        let ix = cx as i64;
-        let jx = (cell_hash(ix, 0, terrain.noise_seed) - 0.5) * 0.7;
-        let center = cx + 0.5 + jx;
-        let half_width = 0.34 + cell_hash(ix, 0, terrain.noise_seed ^ 0x51ED) * 0.30;
-        let dx = (gx - center).abs();
-        if dx > half_width {
-            continue;
-        }
-        let height = 0.30 + cell_hash(ix, 0, terrain.noise_seed ^ 0x2C7A) * 0.40;
-        let terrace = if dx < half_width * 0.60 {
-            height
-        } else if dx < half_width * 0.84 {
-            height * 0.70
-        } else {
-            height * 0.42
-        };
-        let dist = dx / half_width;
-        if terrace > best_height || (terrace == best_height && dist < best_dist) {
-            best_height = terrace;
-            best_dist = dist;
-        }
-    }
-    let top = terrain.horizon - best_height * terrain.coverage * 0.34;
-    (top.clamp(0.20, terrain.horizon), best_dist)
+fn mesa_lane_count(seed: u64) -> usize {
+    2 + (cell_hash(0, 0, seed ^ 0x4D45_5341) * 2.0).floor() as usize
 }
 
-/// Badlands: repeated eroded ridges and gullies across the frame, layered
-/// sediment. The ridge field runs the full width so both edges carry
-/// silhouettes.
+fn mesa_lanes(seed: u64) -> [(f32, f32, f32, f32); 3] {
+    let count = mesa_lane_count(seed);
+    let mut lanes = [(0.0_f32, 0.0_f32, 0.0_f32, 0.0_f32); 3];
+
+    // Left and right edge plateaus are anchored partly off-frame so the
+    // capture window's center padding still reads as mesa shoulders and caps.
+    let left_jitter = (cell_hash(0, 0, seed ^ 0x4C41_4E45) - 0.5) * 0.05;
+    let left_center = -0.03 + left_jitter;
+    let left_half = 0.21 + cell_hash(0, 1, seed ^ 0x5749_4454) * 0.08;
+    let left_height = 0.30 + cell_hash(0, 2, seed ^ 0x4845_4947) * 0.14;
+    let left_shoulder = 0.25 + cell_hash(0, 3, seed ^ 0x5348_4F55) * 0.18;
+    lanes[0] = (left_center, left_half, left_height, left_shoulder);
+
+    let right_jitter = (cell_hash(1, 0, seed ^ 0x5249_4748) - 0.5) * 0.05;
+    let right_center = 1.03 + right_jitter;
+    let right_half = 0.21 + cell_hash(1, 1, seed ^ 0x5749_4454) * 0.08;
+    let right_height = 0.30 + cell_hash(1, 2, seed ^ 0x4845_4947) * 0.14;
+    let right_shoulder = 0.25 + cell_hash(1, 3, seed ^ 0x5348_4F55) * 0.18;
+    lanes[1] = (right_center, right_half, right_height, right_shoulder);
+
+    if count >= 3 {
+        let center_jitter = (cell_hash(2, 0, seed ^ 0x4345_4E54) - 0.5) * 0.08;
+        let center = 0.50 + center_jitter;
+        let half_width = 0.07 + cell_hash(2, 1, seed ^ 0x434E_5452) * 0.05;
+        let height = 0.16 + cell_hash(2, 2, seed ^ 0x434E_5448) * 0.10;
+        let shoulder_frac = 0.28 + cell_hash(2, 3, seed ^ 0x434E_5453) * 0.15;
+        lanes[2] = (center, half_width, height, shoulder_frac);
+    }
+    lanes
+}
+
+fn mesa_lane_height(
+    u: f32,
+    center: f32,
+    half_width: f32,
+    height: f32,
+    shoulder_frac: f32,
+) -> (f32, f32) {
+    let dx = (u - center).abs();
+    if dx >= half_width {
+        return (0.0, 0.0);
+    }
+    let cap_end = half_width * (1.0 - shoulder_frac.max(0.25));
+    if dx <= cap_end {
+        let dist = dx / half_width.max(0.001);
+        return (height, dist);
+    }
+    let shoulder_w = (half_width - cap_end).max(0.001);
+    let step = (dx - cap_end) / shoulder_w;
+    let terrace = if step < 0.5 {
+        height * 0.68
+    } else {
+        height * 0.34
+    };
+    let dist = dx / half_width.max(0.001);
+    (terrace, dist)
+}
+
+fn mesa_profile(fx: f32, terrain: &Terrain) -> (f32, f32, f32) {
+    let u = fx / terrain.width.max(1.0);
+    let lanes = mesa_lanes(terrain.noise_seed);
+    let count = mesa_lane_count(terrain.noise_seed);
+    let mut best_height = 0.0_f32;
+    let mut best_dist = 1.0_f32;
+    let mut on_shoulder = 0.0_f32;
+    for &(center, half_width, height, shoulder_frac) in &lanes[..count] {
+        let (terrace, dist) = mesa_lane_height(u, center, half_width, height, shoulder_frac);
+        if terrace > best_height {
+            best_height = terrace;
+            best_dist = dist;
+            let cap_end = half_width * (1.0 - shoulder_frac.max(0.25));
+            on_shoulder = if (u - center).abs() > cap_end && terrace > 0.0 {
+                1.0
+            } else {
+                0.0
+            };
+        }
+    }
+    let relief = best_height * terrain.coverage;
+    let top = terrain.horizon - relief * 0.36;
+    (top.clamp(0.20, terrain.horizon), best_dist, on_shoulder)
+}
+
+/// Badlands: anchored eroded ridge profiles, slope-lit faces, horizontal
+/// strata, and localized diagonal washes without a periodic full-height mask.
 fn structure_badlands(base: [f32; 3], ctx: &StructureCtx) -> [f32; 3] {
     let terrain = ctx.terrain;
     let v = ctx.v;
@@ -410,64 +459,107 @@ fn structure_badlands(base: [f32; 3], ctx: &StructureCtx) -> [f32; 3] {
     let shade = ctx.shade;
     let horizon_color = ctx.horizon_color;
     let seed = ctx.seed;
-    let crest = badlands_horizon(fx, scale, terrain);
+    let crest = badlands_horizon(fx, terrain);
     let ground_mask = smoothstep_range(v, crest - 0.014, crest + 0.028);
     if ground_mask <= 0.0 {
         return base;
     }
 
-    // Narrow channels run down the faces. Cell-scale warp bends each channel
-    // without dissolving the whole surface into mottled noise.
-    let tau = std::f32::consts::TAU;
-    let channel_warp = (warped_fbm(
-        fx / (scale * 0.45),
-        fy / (scale * 0.80),
-        seed ^ 0x4755_4C4C,
-        3,
-    ) - 0.5)
-        * 2.4;
-    let channel_phase = (fx / (scale * 0.85)) * tau + channel_warp;
-    let gully = (1.0 - smoothstep_range(channel_phase.sin().abs(), 0.10, 0.72))
+    let u = fx / terrain.width.max(1.0);
+    let ridge_body = badlands_ridge_body(u, terrain);
+    let localized_wash = value_noise(
+        fx / (scale * 0.55) + ridge_body * 4.0,
+        fy / (scale * 0.65),
+        seed ^ 0x5741_5348,
+    );
+    let wash = smoothstep_range(localized_wash, 0.62, 0.88)
+        * ridge_body
         * ground_mask
-        * terrain.coverage;
+        * terrain.coverage
+        * 0.22;
 
-    // Sediment is horizontal. A full sine period per cell keeps the bands
-    // readable at the padding edge instead of stretching them sixfold.
+    let tau = std::f32::consts::TAU;
     let strata_jitter =
         (value_noise(fx / (scale * 0.35), fy / (scale * 0.35), seed ^ 0x6A6A) - 0.5) * 0.9;
     let strata = ((fy / (scale * 0.24)) * tau + strata_jitter).sin();
-    let strata_amt = smoothstep_range(strata, 0.05, 0.92) * 0.09 * ground_mask * terrain.coverage;
+    let strata_amt = smoothstep_range(strata, 0.05, 0.92) * 0.11 * ground_mask * terrain.coverage;
 
-    let left = badlands_horizon(fx - scale * 0.10, scale, terrain);
-    let right = badlands_horizon(fx + scale * 0.10, scale, terrain);
-    let slope = ((right - left) * 10.0).clamp(-1.0, 1.0);
+    let sample = terrain.width * 0.022;
+    let left = badlands_horizon(fx - sample, terrain);
+    let right = badlands_horizon(fx + sample, terrain);
+    let slope = ((right - left) * 7.0).clamp(-1.0, 1.0);
     let lit_face = if terrain.light.0 >= 0.5 {
         slope.max(0.0)
     } else {
         (-slope).max(0.0)
     };
+    let lit_face = lit_face * lit_face;
 
-    let body = mix3(base, shade, ground_mask * terrain.coverage * 0.24);
-    let gullied = mix3(body, shade, gully * 0.30);
-    let lit = mix3(gullied, light, lit_face * ground_mask * 0.26);
-    let shaded = mix3(lit, shade, gully * 0.12);
-    mix3(shaded, horizon_color, strata_amt)
+    let body = mix3(
+        base,
+        shade,
+        (ground_mask * terrain.coverage * 0.42).min(0.55),
+    );
+    let ridged = mix3(body, shade, (ridge_body * ground_mask * 0.28).min(0.38));
+    let lit = mix3(ridged, light, lit_face * ground_mask * 0.22);
+    let washed = mix3(lit, shade, wash);
+    mix3(washed, horizon_color, strata_amt)
 }
 
-fn badlands_horizon(fx: f32, scale: f32, terrain: &Terrain) -> f32 {
-    let broad = warped_fbm(
-        fx / (scale * 1.45),
-        0.61,
-        terrain.noise_seed ^ 0x4241_444C,
-        4,
-    );
-    let teeth = warped_fbm(
-        fx / (scale * 0.75) + 4.7,
-        2.2,
-        terrain.noise_seed ^ 0x5445_4554,
-        3,
-    );
-    (terrain.horizon - 0.018 - broad * 0.10 - teeth * 0.065).clamp(0.20, 0.80)
+fn badlands_ridge_count(seed: u64) -> usize {
+    4 + (cell_hash(0, 1, seed ^ 0x4241_444C) * 2.0).floor() as usize
+}
+
+fn badlands_ridges(seed: u64) -> [(f32, f32, f32); 5] {
+    let count = badlands_ridge_count(seed);
+    let mut ridges = [(0.0_f32, 0.0_f32, 0.0_f32); 5];
+    const ANCHORS: [(f32, f32, f32); 5] = [
+        (-0.05, 0.34, 0.18),
+        (0.20, 0.30, 0.16),
+        (0.50, 0.32, 0.15),
+        (0.80, 0.30, 0.16),
+        (1.05, 0.34, 0.18),
+    ];
+    for (index, ridge) in ridges.iter_mut().enumerate().take(count) {
+        let (base_center, base_half, base_peak) = ANCHORS[index];
+        let center_jitter = (cell_hash(index as i64, 0, seed ^ 0x5249_4447) - 0.5) * 0.06;
+        let half_jitter = cell_hash(index as i64, 1, seed ^ 0x4552_4F44) * 0.06;
+        let peak_jitter = cell_hash(index as i64, 2, seed ^ 0x5045_414B) * 0.06;
+        *ridge = (
+            base_center + center_jitter,
+            base_half + half_jitter,
+            base_peak + peak_jitter,
+        );
+    }
+    ridges
+}
+
+fn badlands_ridge_height(u: f32, center: f32, half_width: f32, peak: f32) -> f32 {
+    let dx = (u - center).abs();
+    if dx >= half_width {
+        return 0.0;
+    }
+    let t = 1.0 - dx / half_width.max(0.001);
+    let eroded = t * smoothstep(t);
+    peak * eroded
+}
+
+fn badlands_ridge_body(u: f32, terrain: &Terrain) -> f32 {
+    let ridges = badlands_ridges(terrain.noise_seed);
+    let count = badlands_ridge_count(terrain.noise_seed);
+    let mut body = 0.0_f32;
+    for &(center, half_width, peak) in &ridges[..count] {
+        body = body.max(badlands_ridge_height(u, center, half_width, peak));
+    }
+    let floor = 0.05 + cell_hash(0, 2, terrain.noise_seed ^ 0x464C_4F52) * 0.03;
+    body = body.max(floor);
+    body * terrain.coverage
+}
+
+fn badlands_horizon(fx: f32, terrain: &Terrain) -> f32 {
+    let u = fx / terrain.width.max(1.0);
+    let relief = badlands_ridge_body(u, terrain);
+    (terrain.horizon - relief * 0.95).clamp(0.20, 0.80)
 }
 
 /// Glacier: a fractured ice field, crevasse bands, blue shadow in the
@@ -772,5 +864,178 @@ mod tests {
                 assert!((0.0..=1.0).contains(&value), "{value} out of range");
             }
         }
+    }
+
+    fn mesa_test_terrain(seed: u64) -> Terrain {
+        let mut rng = StdRng::seed_from_u64(seed);
+        Terrain::generate(&mut rng, 240, 180, Some(TerrainKind::Mesa))
+    }
+
+    fn badlands_test_terrain(seed: u64) -> Terrain {
+        let mut rng = StdRng::seed_from_u64(seed);
+        Terrain::generate(&mut rng, 240, 180, Some(TerrainKind::Badlands))
+    }
+
+    fn sample_mesa_tops(terrain: &Terrain, samples: usize) -> Vec<f32> {
+        (0..samples)
+            .map(|index| {
+                let fx = index as f32 * terrain.width / samples as f32;
+                mesa_profile(fx, terrain).0
+            })
+            .collect()
+    }
+
+    fn sample_badlands_crests(terrain: &Terrain, samples: usize) -> Vec<f32> {
+        (0..samples)
+            .map(|index| {
+                let fx = index as f32 * terrain.width / samples as f32;
+                badlands_horizon(fx, terrain)
+            })
+            .collect()
+    }
+
+    fn count_elevated_components(elevation: &[f32], threshold: f32) -> usize {
+        let mut count = 0;
+        let mut in_component = false;
+        for &value in elevation {
+            if value >= threshold {
+                if !in_component {
+                    count += 1;
+                    in_component = true;
+                }
+            } else {
+                in_component = false;
+            }
+        }
+        count
+    }
+
+    fn count_ridge_peaks(profile: &[f32]) -> usize {
+        if profile.len() < 3 {
+            return 0;
+        }
+        let mut peaks = 0;
+        for index in 1..profile.len() - 1 {
+            if profile[index] < profile[index - 1] && profile[index] < profile[index + 1] {
+                peaks += 1;
+            }
+        }
+        peaks
+    }
+
+    fn max_adjacent_drop(values: &[f32]) -> f32 {
+        values
+            .windows(2)
+            .map(|pair| (pair[1] - pair[0]).abs())
+            .fold(0.0_f32, f32::max)
+    }
+
+    #[test]
+    fn mesa_profile_has_two_or_three_separated_components() {
+        for seed in [1_u64, 7, 42, 99, 2026] {
+            let terrain = mesa_test_terrain(seed);
+            let tops = sample_mesa_tops(&terrain, 240);
+            let elevation: Vec<f32> = tops.iter().map(|top| terrain.horizon - top).collect();
+            let relief = elevation.iter().copied().fold(0.0_f32, f32::max);
+            let threshold = relief * 0.35;
+            let components = count_elevated_components(&elevation, threshold);
+            assert!(
+                (2..=3).contains(&components),
+                "seed {seed}: expected 2-3 mesa components, got {components} (relief {relief})"
+            );
+        }
+    }
+
+    #[test]
+    fn mesa_profile_avoids_single_column_drops() {
+        for seed in [1_u64, 7, 42, 99, 2026] {
+            let terrain = mesa_test_terrain(seed);
+            let tops = sample_mesa_tops(&terrain, 240);
+            let relief = terrain.horizon - tops.iter().copied().fold(f32::INFINITY, f32::min);
+            let max_drop = max_adjacent_drop(&tops);
+            assert!(
+                max_drop < relief * 0.80,
+                "seed {seed}: column drop {max_drop} too large for relief {relief}"
+            );
+        }
+    }
+
+    #[test]
+    fn badlands_profile_has_multiple_separated_ridge_peaks() {
+        for seed in [2_u64, 11, 37, 88, 2026] {
+            let terrain = badlands_test_terrain(seed);
+            let crests = sample_badlands_crests(&terrain, 240);
+            let peaks = count_ridge_peaks(&crests);
+            assert!(
+                peaks >= 3,
+                "seed {seed}: expected multiple ridge peaks, got {peaks}"
+            );
+        }
+    }
+
+    #[test]
+    fn badlands_profile_carries_material_relief() {
+        for seed in [2_u64, 11, 37, 88, 2026] {
+            let terrain = badlands_test_terrain(seed);
+            let crests = sample_badlands_crests(&terrain, 240);
+            let relief = terrain.horizon - crests.iter().copied().fold(f32::INFINITY, f32::min);
+            assert!(
+                (0.10..=0.26).contains(&relief),
+                "seed {seed}: relief {relief} outside expected badlands range"
+            );
+        }
+    }
+
+    fn sample_mesa_relief(terrain: &Terrain, samples: usize) -> Vec<f32> {
+        (0..samples)
+            .map(|index| {
+                let fx = index as f32 * terrain.width / samples as f32;
+                terrain.horizon - mesa_profile(fx, terrain).0
+            })
+            .collect()
+    }
+
+    fn sample_badlands_ridge_body(terrain: &Terrain, samples: usize) -> Vec<f32> {
+        (0..samples)
+            .map(|index| {
+                let u = index as f32 / samples as f32;
+                badlands_ridge_body(u, terrain)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn fresh_profiles_mesa_reaches_both_outer_bands() {
+        let mut rng = StdRng::seed_from_u64(7);
+        let terrain = Terrain::generate(&mut rng, 440, 300, Some(TerrainKind::Mesa));
+        let relief = sample_mesa_relief(&terrain, 440);
+        let max_relief = relief.iter().copied().fold(0.0_f32, f32::max);
+        let left_band = &relief[..55];
+        let right_band = &relief[385..];
+        let left_peak = left_band.iter().copied().fold(0.0_f32, f32::max);
+        let right_peak = right_band.iter().copied().fold(0.0_f32, f32::max);
+        let threshold = max_relief * 0.40;
+        assert!(
+            left_peak >= threshold,
+            "seed 7: left outer band peak {left_peak} below {threshold} (max {max_relief})"
+        );
+        assert!(
+            right_peak >= threshold,
+            "seed 7: right outer band peak {right_peak} below {threshold} (max {max_relief})"
+        );
+    }
+
+    #[test]
+    fn fresh_profiles_badlands_stays_continuous() {
+        let mut rng = StdRng::seed_from_u64(7);
+        let terrain = Terrain::generate(&mut rng, 440, 300, Some(TerrainKind::Badlands));
+        let body = sample_badlands_ridge_body(&terrain, 440);
+        let peak = body.iter().copied().fold(0.0_f32, f32::max);
+        let floor = peak * 0.18;
+        let min_body = body.iter().copied().fold(f32::INFINITY, f32::min);
+        assert!(
+            min_body >= floor,
+            "seed 7: ridge body dipped to {min_body}, floor {floor} (peak {peak})"
+        );
     }
 }
