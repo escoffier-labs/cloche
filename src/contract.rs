@@ -72,6 +72,41 @@ pub struct PolishResult {
     pub errors: Vec<String>,
 }
 
+/// Result of a `cloche config` command: the effective preferences, where they
+/// live, and the backdrop menu a picker can render.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigResult {
+    pub ok: bool,
+    pub version: String,
+    pub created_at: DateTime<Utc>,
+    /// The preferences file this run read or wrote.
+    pub path: PathBuf,
+    /// False when no file exists yet and the defaults are in play.
+    pub exists: bool,
+    pub config: crate::config::ClocheConfig,
+    /// Present for `cloche config options`: every backdrop the pickers accept.
+    pub options: Option<StyleOptions>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+/// Every backdrop choice, for menus and for anything building a picker UI.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StyleOptions {
+    pub palettes: Vec<PaletteOption>,
+    pub scenes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PaletteOption {
+    pub name: String,
+    /// `gradient` or `space`. Scenes only apply to space palettes.
+    pub kind: String,
+}
+
 /// Result of rendering a short Cloche reel from an existing recording.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

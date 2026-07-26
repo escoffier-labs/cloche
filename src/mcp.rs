@@ -121,6 +121,8 @@ fn tool_definitions() -> Value {
                     "outDir": { "type": "string", "description": "Directory for flat capture artifacts (defaults to ~/Pictures/Cloche). Not a per-shot folder." },
                     "presentation": { "type": "string", "enum": ["raw", "card", "both"], "default": "both" },
                     "detail": { "type": "string", "enum": ["auto", "low", "high", "original"], "default": "high" },
+                    "palette": { "type": "string", "enum": crate::polish::palette_names(), "description": "Backdrop palette for the card; falls back to the user's cloche config, then a random pick." },
+                    "scene": { "type": "string", "enum": crate::polish::scene_names(), "description": "Pin the deep-space scene look (jwst, alma, cmb, etc.). Only applies to space palettes." },
                     "styleSeed": { "type": "integer" },
                     "clipboard": { "type": "boolean", "description": "Copy the card to the system clipboard after capture." },
                     "format": { "type": "string", "enum": ["json"], "default": "json", "description": "Output format. The MCP wrapper always passes --format json." }
@@ -211,6 +213,14 @@ pub fn tool_command_args(name: &str, arguments: &Value) -> Result<Vec<String>, S
             }
             if let Some(value) = string_arg(arguments, "detail") {
                 args.push("--detail".to_string());
+                args.push(value);
+            }
+            if let Some(value) = string_arg(arguments, "palette") {
+                args.push("--palette".to_string());
+                args.push(value);
+            }
+            if let Some(value) = string_arg(arguments, "scene") {
+                args.push("--scene".to_string());
                 args.push(value);
             }
             if let Some(value) = arguments.get("styleSeed").and_then(Value::as_u64) {
@@ -446,6 +456,46 @@ mod tests {
     fn capture_args_omit_clipboard_when_false() {
         let args = tool_command_args("capture", &json!({ "clipboard": false })).expect("args");
         assert!(!args.contains(&"--clipboard".to_string()));
+    }
+
+    #[test]
+    fn capture_args_map_palette_and_scene() {
+        let args = tool_command_args(
+            "capture",
+            &json!({ "palette": "orion-emission", "scene": "jwst" }),
+        )
+        .expect("args");
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["--palette", "orion-emission"])
+        );
+        assert!(args.windows(2).any(|w| w == ["--scene", "jwst"]));
+    }
+
+    #[test]
+    fn capture_tool_advertises_every_palette_and_scene() {
+        let tools = tool_definitions();
+        let capture = tools
+            .as_array()
+            .expect("tools")
+            .iter()
+            .find(|tool| tool["name"] == "capture")
+            .expect("capture tool");
+        let properties = &capture["inputSchema"]["properties"];
+        assert_eq!(
+            properties["palette"]["enum"]
+                .as_array()
+                .expect("palettes")
+                .len(),
+            crate::polish::palette_names().len()
+        );
+        assert_eq!(
+            properties["scene"]["enum"]
+                .as_array()
+                .expect("scenes")
+                .len(),
+            crate::polish::scene_names().len()
+        );
     }
 
     #[test]

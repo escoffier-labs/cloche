@@ -507,3 +507,39 @@ so old sidecars still deserialize. MCP `capture` now advertises `format`
 the flat layout; the wrapper still forces `--format json` and rejects other
 values. README Command Reference lists `schema --for reel-render` beside
 polish.
+## Persisted backdrop preferences (2026-07-25)
+
+Issue #27 Phase 1: a config the CLI and MCP paths read so backdrop choice stops
+being a per-invocation flag. Phase 2 (`cloche studio`) is deliberately not here;
+the config is the durable thing a UI would write to, so it lands first.
+
+- **JSON, not TOML.** The `[polish]` sketch in the issue implied TOML, but a
+  TOML crate is a new dependency for one small file. `serde_json` is already in
+  the tree and every other Cloche surface is JSON, so `config.json` it is. Same
+  reasoning as the `setup` agent-config work above.
+- **Pool selection lives in `polish`, not `space.rs`.** `style_from_seed_in_pool`
+  takes palette and scene allow-lists. The scene is picked at the `polish` layer
+  and pinned via the existing `style.scene` field rather than teaching
+  `Scene::generate` about pools: that function blends kinds with its own rolls
+  (a JWST roll can layer onto a galaxy), so filtering inside it would only bias
+  the result, not confine it. Pinning confines it exactly.
+- **Empty pool means unconstrained, and the scene draw happens last.**
+  `style_from_seed(seed)` is now `style_from_seed_in_pool(seed, &[], &[])`, so
+  every existing `--style-seed` had to keep rendering identically. Drawing the
+  scene after every other field keeps the rng sequence untouched when no scene
+  pool is set; `empty_pools_reproduce_the_unconstrained_style` compares composed
+  pixels, not just field values, to hold that.
+- **Config names are validated by the caller, not by `polish`.** Clap
+  pre-validates flags, but a hand-edited config can name anything.
+  `config::resolve_style` filters unknown names into `warnings` and `polish`
+  treats its allow-lists as advisory, falling back to the built-in space pool
+  rather than erroring. A typo in a preferences file should not cost a
+  screenshot.
+- **`run_polish` takes a config path.** Resolving `config::path()` inside it
+  would make every polish test depend on the developer's own preferences file.
+  The path is threaded from `polish()` so tests point at a temp file or a
+  nonexistent one.
+- **Reels are untouched.** `resolve_reel_style` has its own seed/palette pairing
+  for brand continuity with a still card, and the issue scopes the preferences
+  to `capture`/`polish`. Wiring reels to the config would silently change
+  existing reel renders.

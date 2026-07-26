@@ -205,6 +205,21 @@ pub fn palette_names() -> Vec<&'static str> {
     PALETTES.iter().map(|palette| palette.name).collect()
 }
 
+/// Every palette paired with its backdrop kind (`gradient` or `space`), for
+/// menus that need to group the two families.
+pub fn palette_catalog() -> Vec<(&'static str, &'static str)> {
+    PALETTES
+        .iter()
+        .map(|palette| {
+            let kind = match palette.kind {
+                BackdropKind::Gradient => "gradient",
+                BackdropKind::Space => "space",
+            };
+            (palette.name, kind)
+        })
+        .collect()
+}
+
 /// Seeded style with the gradient palette pinned to `palette_name` instead of
 /// the seed's random pick. Returns `None` for an unknown palette name.
 pub fn style_with_palette(seed: u64, palette_name: &str) -> Option<PresentationStyle> {
@@ -221,15 +236,39 @@ pub fn style_with_palette(seed: u64, palette_name: &str) -> Option<PresentationS
 }
 
 pub fn style_from_seed(seed: u64) -> PresentationStyle {
+    style_from_seed_in_pool(seed, &[], &[])
+}
+
+/// Seeded style whose random picks are confined to the caller's allow-lists.
+///
+/// An empty list means "no constraint", so `style_from_seed_in_pool(seed, &[],
+/// &[])` reproduces the pre-pool style for that seed byte for byte. Names the
+/// tables do not know are ignored here; validating and reporting them belongs
+/// to the caller that owns the user-facing warnings (see `config.rs`). If that
+/// leaves no palette at all, the built-in space pool is used rather than
+/// failing a capture over a preferences typo.
+pub fn style_from_seed_in_pool(
+    seed: u64,
+    palettes: &[String],
+    scenes: &[String],
+) -> PresentationStyle {
     let mut rng = StdRng::seed_from_u64(seed);
-    // Random rotation stays space-only; the legacy gradient palettes are
-    // reachable by explicit `--palette` name.
-    let space_palettes: Vec<&Palette> = PALETTES
+    let allowed: Vec<&Palette> = PALETTES
         .iter()
-        .filter(|palette| palette.kind == BackdropKind::Space)
+        .filter(|palette| palettes.iter().any(|name| name == palette.name))
         .collect();
-    let palette = space_palettes[rng.random_range(0..space_palettes.len())];
-    PresentationStyle {
+    // Random rotation stays space-only by default; the legacy gradient palettes
+    // are reachable by explicit `--palette` name or by naming them in the pool.
+    let pool: Vec<&Palette> = if allowed.is_empty() {
+        PALETTES
+            .iter()
+            .filter(|palette| palette.kind == BackdropKind::Space)
+            .collect()
+    } else {
+        allowed
+    };
+    let palette = pool[rng.random_range(0..pool.len())];
+    let mut style = PresentationStyle {
         seed,
         palette_name: palette.name.to_string(),
         backdrop: palette.kind,
@@ -246,7 +285,22 @@ pub fn style_from_seed(seed: u64) -> PresentationStyle {
         glow_a_pos: (rng.random_range(0.55..=0.95), rng.random_range(0.0..=0.22)),
         glow_b_pos: (rng.random_range(0.05..=0.45), rng.random_range(0.72..=1.0)),
         scene: None,
+    };
+    // Drawn after every other field so an unconstrained call leaves the seed's
+    // existing style untouched. Picking the scene here instead of teaching
+    // `space.rs` about pools keeps the pool honored exactly: the renderer's own
+    // roll blends kinds, a pin does not.
+    if style.is_space() && !scenes.is_empty() {
+        let allowed: Vec<&'static str> = crate::space::SceneKind::NAMES
+            .iter()
+            .copied()
+            .filter(|known| scenes.iter().any(|name| name == known))
+            .collect();
+        if !allowed.is_empty() {
+            style.scene = scene_from_name(allowed[rng.random_range(0..allowed.len())]);
+        }
     }
+    style
 }
 
 pub fn render_codex_card(
@@ -695,6 +749,100 @@ mod tests {
     #[test]
     fn style_with_unknown_palette_returns_none() {
         assert!(style_with_palette(1, "hotdog-stand").is_none());
+    }
+
+    #[test]
+    fn empty_pools_reproduce_the_unconstrained_style() {
+        // The pool argument must not shift the seed's draws, or every existing
+        // `--style-seed` would render differently after this change.
+        let input = test_input(160, 120);
+        for seed in 0..16 {
+            let base = style_from_seed_in_pool(seed, &[], &[]);
+            let pooled = style_from_seed(seed);
+            assert_eq!(pooled.palette_name, base.palette_name, "seed {seed}");
+            assert_eq!(pooled.scene, None, "seed {seed}");
+            assert_eq!(
+                compose_card(&input, &pooled).as_raw(),
+                compose_card(&input, &base).as_raw(),
+                "seed {seed}"
+            );
+        }
+    }
+
+    #[test]
+    fn palette_pool_confines_the_random_pick() {
+        let pool = vec!["aurora-teal".to_string(), "lagoon-trifid".to_string()];
+        let mut seen: Vec<String> = Vec::new();
+        for seed in 0..64 {
+            let style = style_from_seed_in_pool(seed, &pool, &[]);
+            assert!(
+                pool.contains(&style.palette_name),
+                "seed {seed} escaped the pool with {}",
+                style.palette_name
+            );
+            if !seen.contains(&style.palette_name) {
+                seen.push(style.palette_name.clone());
+            }
+        }
+        // Both entries should turn up, otherwise the pool is not really random.
+        assert_eq!(seen.len(), 2, "seen: {seen:?}");
+    }
+
+    #[test]
+    fn palette_pool_can_reach_gradient_palettes() {
+        // The default rotation is space-only, so an explicit gradient pool is
+        // the only way back to the legacy look without naming it per run.
+        let pool = vec!["ember-glow".to_string()];
+        let style = style_from_seed_in_pool(5, &pool, &[]);
+        assert_eq!(style.palette_name, "ember-glow");
+        assert!(!style.is_space());
+    }
+
+    #[test]
+    fn scene_pool_pins_a_scene_from_the_pool() {
+        let scenes = vec!["alma".to_string(), "veil".to_string()];
+        let allowed = [scene_from_name("alma"), scene_from_name("veil")];
+        for seed in 0..32 {
+            let style = style_from_seed_in_pool(seed, &[], &scenes);
+            assert!(
+                allowed.contains(&style.scene),
+                "seed {seed} produced {:?}",
+                style.scene
+            );
+        }
+    }
+
+    #[test]
+    fn scene_pool_is_ignored_for_gradient_palettes() {
+        let palettes = vec!["ember-glow".to_string()];
+        let scenes = vec!["alma".to_string()];
+        let style = style_from_seed_in_pool(3, &palettes, &scenes);
+        assert_eq!(style.scene, None);
+    }
+
+    #[test]
+    fn unknown_pool_names_fall_back_to_the_default_pool() {
+        let palettes = vec!["hotdog-stand".to_string()];
+        let style = style_from_seed_in_pool(11, &palettes, &[]);
+        assert_eq!(style.palette_name, style_from_seed(11).palette_name);
+        assert!(style.is_space());
+    }
+
+    #[test]
+    fn palette_catalog_labels_every_palette() {
+        let catalog = palette_catalog();
+        assert_eq!(catalog.len(), PALETTES.len());
+        for (name, kind) in &catalog {
+            let palette = PALETTES
+                .iter()
+                .find(|palette| palette.name == *name)
+                .expect("catalog name is in the table");
+            let expected = match palette.kind {
+                BackdropKind::Gradient => "gradient",
+                BackdropKind::Space => "space",
+            };
+            assert_eq!(kind, &expected, "{name}");
+        }
     }
 
     #[test]
