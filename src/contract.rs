@@ -98,14 +98,15 @@ pub struct StyleOptions {
     pub palettes: Vec<PaletteOption>,
     pub scenes: Vec<String>,
     pub motifs: Vec<String>,
+    pub skies: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PaletteOption {
     pub name: String,
-    /// `gradient`, `space`, or `pattern`. Scenes apply only to space palettes,
-    /// motifs only to pattern palettes.
+    /// `gradient`, `space`, `pattern`, or `sky`. Scenes apply only to space
+    /// palettes, motifs only to pattern palettes, skies only to sky palettes.
     pub kind: String,
 }
 

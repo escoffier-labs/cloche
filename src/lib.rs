@@ -13,6 +13,7 @@ mod pattern;
 mod polish;
 mod reel_hyperframes;
 mod setup;
+mod sky;
 mod space;
 mod studio;
 mod text;
