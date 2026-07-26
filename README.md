@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="https://brigade.tools/cloche">Website</a> &middot; <a href="#install">Install</a>
+  <a href="https://cloche.escoffierlabs.dev">Website</a> &middot; <a href="#install">Install</a>
 </p>
 
 <p align="center">
@@ -42,6 +42,44 @@ cargo install --git https://github.com/escoffier-labs/cloche
 | **Emit** | Stable JSON stdout | Shells, hotkeys, and agents can consume the result |
 | **Serve** | Optional MCP | Expose capture to coding agents when you want it |
 
+## Examples
+
+Same proof cards as the [website](https://cloche.escoffierlabs.dev): a GitHub
+README capture, polished onto two deep-space skies.
+
+<p align="center">
+  <img src="docs/assets/examples/card-milkyway-core.jpg" alt="Cloche polish of the cloche GitHub README on milkyway-core" width="440">
+  &nbsp;
+  <img src="docs/assets/examples/card-carina-jwst.jpg" alt="Cloche polish of the cloche GitHub README on carina-hubble with JWST look" width="440">
+</p>
+
+<p align="center">
+  <sub>readme · milkyway-core · seed 3 &nbsp;·&nbsp; readme · carina-hubble · jwst · seed 42</sub>
+</p>
+
+```bash
+cloche polish shot.png --palette milkyway-core --scene sun --style-seed 3
+cloche polish shot.png --palette carina-hubble --scene jwst --style-seed 42
+```
+
+Every card sits in a sky drawn from noise at render time. Pin a palette or a
+telescope look; the same `--style-seed` reproduces one sky exactly:
+
+<p align="center">
+  <img src="docs/assets/examples/orion-emission.jpg" alt="orion-emission" width="140">
+  <img src="docs/assets/examples/carina-hubble.jpg" alt="carina-hubble" width="140">
+  <img src="docs/assets/examples/milkyway-core.jpg" alt="milkyway-core" width="140">
+  <img src="docs/assets/examples/horsehead-flame.jpg" alt="horsehead-flame" width="140">
+  <img src="docs/assets/examples/andromeda-haze.jpg" alt="andromeda-haze" width="140">
+  <img src="docs/assets/examples/lagoon-trifid.jpg" alt="lagoon-trifid" width="140">
+</p>
+
+```bash
+cloche polish shot.png --palette horsehead-flame --scene alma --style-seed 7
+```
+
+See [Space backdrops](#space-backdrops) for the full palette and scene lists.
+Live Studio and more samples: [cloche.escoffierlabs.dev](https://cloche.escoffierlabs.dev).
 
 ## Quick Start
 
@@ -55,7 +93,7 @@ cloche capture --target active --out-dir "$OUT" --format json
 Style an existing screenshot into a presentation card without recapturing:
 
 ```bash
-cloche polish /tmp/diff.png --palette violet-haze --format json
+cloche polish /tmp/diff.png --palette milkyway-core --format json
 ```
 
 By default the card sits on a procedural deep-space scene. Pick one instead of
