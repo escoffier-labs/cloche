@@ -593,16 +593,57 @@ mod tests {
             .find(|tool| tool["name"] == "capture")
             .expect("capture tool");
         let properties = &capture["inputSchema"]["properties"];
-        assert_eq!(
-            properties["terrain"]["enum"]
-                .as_array()
-                .expect("terrain enum")
-                .len(),
-            crate::polish::terrain_names().len()
+        let names = properties["terrain"]["enum"]
+            .as_array()
+            .expect("terrain enum");
+        assert_eq!(names.len(), crate::polish::terrain_names().len());
+        for kind in ["dunes", "mesa", "badlands", "glacier"] {
+            assert!(
+                names.contains(&json!(kind)),
+                "{kind} missing from MCP terrain enum"
+            );
+        }
+        let capture_desc = properties["terrain"]["description"]
+            .as_str()
+            .expect("capture terrain description");
+        for kind in ["dunes", "mesa", "badlands", "glacier"] {
+            assert!(
+                capture_desc.contains(kind),
+                "capture description missing {kind}"
+            );
+        }
+        assert!(
+            !capture_desc.contains("cave-mouth"),
+            "capture description still mentions cave-mouth"
         );
-        assert_eq!(
-            properties["terrain"]["enum"].as_array().unwrap()[0],
-            json!("dunes")
+        assert!(
+            !capture_desc.contains("slot-canyon"),
+            "capture description still mentions slot-canyon"
+        );
+
+        let polish = tools
+            .as_array()
+            .expect("tools")
+            .iter()
+            .find(|tool| tool["name"] == "polish")
+            .expect("polish tool");
+        let polish_props = &polish["inputSchema"]["properties"];
+        let polish_desc = polish_props["terrain"]["description"]
+            .as_str()
+            .expect("polish terrain description");
+        for kind in ["dunes", "mesa", "badlands", "glacier"] {
+            assert!(
+                polish_desc.contains(kind),
+                "polish description missing {kind}"
+            );
+        }
+        assert!(
+            !polish_desc.contains("cave-mouth"),
+            "polish description still mentions cave-mouth"
+        );
+        assert!(
+            !polish_desc.contains("slot-canyon"),
+            "polish description still mentions slot-canyon"
         );
     }
 }

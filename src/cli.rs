@@ -82,7 +82,7 @@ pub struct PolishArgs {
     /// omitted. Only applies to sky palettes.
     #[arg(long, value_parser = sky_name_parser())]
     pub sky: Option<String>,
-    /// Pin the terrain kind (e.g. `dunes`, `mesa`, `glacier`); random when
+    /// Pin the terrain kind (e.g. `dunes`, `mesa`, `badlands`, `glacier`); random when
     /// omitted. Only applies to terrain palettes.
     #[arg(long, value_parser = terrain_name_parser())]
     pub terrain: Option<String>,
@@ -229,7 +229,7 @@ pub struct CaptureArgs {
     /// to sky palettes.
     #[arg(long, value_parser = sky_name_parser())]
     pub sky: Option<String>,
-    /// Pin the terrain kind (e.g. `dunes`, `mesa`, `glacier`). Only applies to
+    /// Pin the terrain kind (e.g. `dunes`, `mesa`, `badlands`, `glacier`). Only applies to
     /// terrain palettes.
     #[arg(long, value_parser = terrain_name_parser())]
     pub terrain: Option<String>,
