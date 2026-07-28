@@ -1397,7 +1397,7 @@ mod tests {
     }
 
     #[test]
-    fn terrain_names_lists_the_four_kinds() {
+    fn terrain_names_lists_every_kind() {
         assert_eq!(
             terrain_names(),
             vec!["dunes", "mesa", "badlands", "glacier"]
@@ -1407,7 +1407,7 @@ mod tests {
     #[test]
     fn terrain_palettes_catalog_as_terrain() {
         let catalog = palette_catalog();
-        for name in terrain_names() {
+        for name in ["dunes", "mesa", "badlands", "glacier"] {
             let entry = catalog
                 .iter()
                 .find(|(palette, _)| *palette == name)

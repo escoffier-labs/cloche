@@ -647,3 +647,52 @@ family, and a selection function that lets the table grow.
   `fresh_profiles_badlands_stays_continuous` guards ridge-body continuity at
   seed 7 / 440×300. The accepted render reads as one layered ridge chain
   without the earlier fence-like gaps or vertical drips.
+
+## Alpine terrain cut (2026-07-26)
+
+- Visual QA failed after three iterations (seeds 1/7/42/99, palettes
+  dunes/mesa/badlands/glacier, 440×300). Export receipts:
+  `20260726-214654-work-verify-3489fc` (iter 1),
+  `20260726-215339-work-verify-79cf17` (iter 2),
+  `20260726-221354-work-verify-d2ffbe` (iter 3).
+- **Iteration 1:** flat horizontal bands in the outer padding strip plus snow
+  speckles that read as noise rather than ridge structure.
+- **Iteration 2:** repeated sawtooth silhouette with window-like snow patches
+  that did not cohere into readable mountain faces.
+- **Iteration 3:** rolling bands with a continuous snow rim; still insufficiently
+  distinct from glacier and mesa in finished card strips at the same seed/palette.
+- Decision: `TerrainKind::Alpine` removed; shipping change retains dunes, mesa,
+  badlands, and glacier.
+
+## Hoodoos terrain cut (2026-07-26)
+
+- Visual QA failed after three iterations (seeds 1/7/42/99, palettes
+  dunes/mesa/badlands/glacier, 440×300). Export receipts:
+  `20260726-221945-work-verify-b63dec` (iter 1),
+  `20260726-222329-work-verify-015ad1` (iter 2),
+  `20260726-222618-work-verify-c96372` (iter 3).
+- **Iteration 1:** tiny T-shaped posts plus striped waterline bedrock in the
+  outer padding strip.
+- **Iteration 2:** squat mesa-like forms with pale frosting caps that did not
+  read as hoodoo spires.
+- **Iteration 3:** tall repeated pillars/fence reading with caps too small
+  around finished cards.
+- Decision: `TerrainKind::Hoodoos` removed; shipping change retains dunes, mesa,
+  badlands, and glacier. Both alpine and hoodoos spike scenes were cut; no
+  README terrain-kind list change.
+
+## Slot canyon terrain cut (2026-07-26)
+
+- Visual QA matrix: seeds 1, 7, 42, and 99 across palettes `dunes`, `mesa`, `badlands`, `glacier` at 440×300.
+- **Iteration 1** (Brigade run `20260726-232114-bad3b350`): full backdrops read as soft edge hills. `contact-backdrops-mask4pct.png` is mostly a smooth gradient with no legible vertical wall face or cross-bedding.
+- **Iteration 2** (Brigade run `20260726-232411-54a7f5ed`): still reads as rounded hills. The 4% mask lacks visible strata.
+- **Iteration 3** (work-verify `20260726-234207-work-verify-ddb2bc`): mesa-like slabs and full-width striped ramps. The masked card lost the canyon silhouette.
+- Decision: `TerrainKind::SlotCanyon` removed before the branch was squashed. Retained kinds: `dunes`, `mesa`, `badlands`, `glacier`.
+
+## Cave mouth terrain cut (2026-07-26)
+
+- Visual QA matrix: seeds 1, 7, 42, and 99 across palettes `dunes`, `mesa`, `badlands`, `glacier` at 440×300.
+- **Iteration 1** (work-verify `20260726-233103-work-verify-d460f7`): full backdrops show thin evenly spaced vertical strokes like a teeth fence. The 4% mask lacks a legible enclosing ceiling/side frame.
+- **Iteration 2** (Brigade run `20260726-233210-87e24148`): full backdrops show separate rectangular hanging blocks. The 4% mask becomes a smooth dark frame without rock/rib texture.
+- **Iteration 3** (work-verify `20260726-234054-work-verify-c08c54`): full sheet still read as a row of stalactite teeth. The 4% masked card reduced to a rectangular textured border with none of the 3–4 forms visible.
+- Decision: `TerrainKind::CaveMouth` removed before the branch was squashed. Retained kinds: `dunes`, `mesa`, `badlands`, `glacier`.
