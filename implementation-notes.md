@@ -711,3 +711,17 @@ family, and a selection function that lets the table grow.
   server renders.
 - No server-side render cache added: after the client fix, idle tabs do not hit
   the render endpoints, so caching would be speculative.
+
+## Studio client-disconnect write noise (#40, 2026-08-09)
+
+- Symptom: hard-reload / tab close while `/api/backdrop` or `/api/card` PNG
+  bodies were still writing produced bursts of
+  `studio: write response: Broken pipe (os error 32)` on stderr/journal.
+- Fix: `write_response_error` maps `ErrorKind::BrokenPipe` and
+  `ConnectionReset` to `Ok(())` so the accept loop stays quiet. Other write
+  failures still become `Err("write response: …")` and print as before.
+- Exit code and server-loop shape are unchanged: the worker thread still ends
+  and the accept loop keeps listening either way.
+- Out of scope (companion/follow-ups): cancel-on-disconnect, response caching,
+  request cancellation. #39 already stopped idle re-renders that amplified the
+  spam.
