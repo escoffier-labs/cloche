@@ -477,15 +477,26 @@ async function boot(){
   });
 
   render();
+  // Idle motion is caption/CSS only. paintHero() must not run on a timer:
+  // reassigning img.src hits /api/backdrop or /api/card and forces a full
+  // server-side re-render every tick (#39).
   if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches){
-    setInterval(() => { if(!pinned()){ live++; paintHero(); rollCaption(); } }, 3200);
+    setInterval(idleTick, 3200);
   }
+}
+
+// Periodic idle tick: caption motion only. Never touch the hero image src.
+function idleTick(){
+  if(document.hidden || pinned()) return;
+  live++;
+  rollCaption();
 }
 
 // caption-only refresh, so the rolling hero does not re-post the config
 function rollCaption(){
   const roll = effectivePalettes();
   el("capPalette").textContent = roll[live % (roll.length||1)] || "any";
+  el("capSeed").textContent = ROLL[live % ROLL.length];
 }
 boot();
 </script>
