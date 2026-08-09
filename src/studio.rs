@@ -441,7 +441,17 @@ fn write_response(stream: &mut TcpStream, response: Response) -> Result<(), Stri
         .write_all(head.as_bytes())
         .and_then(|()| stream.write_all(&response.body))
         .and_then(|()| stream.flush())
-        .map_err(|err| format!("write response: {err}"))
+        .or_else(write_response_error)
+}
+
+/// Client disconnects mid-response are normal for a local picker under load;
+/// map them to success so the accept loop does not journal noise. Real write
+/// failures still become `studio: write response: …` via [`serve`].
+fn write_response_error(err: std::io::Error) -> Result<(), String> {
+    match err.kind() {
+        std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset => Ok(()),
+        _ => Err(format!("write response: {err}")),
+    }
 }
 
 #[cfg(test)]
@@ -656,6 +666,36 @@ mod tests {
                 .expect("terrains")
                 .len(),
             polish::terrain_names().len()
+        );
+    }
+
+    #[test]
+    fn client_disconnect_write_errors_are_quiet() {
+        // Regression for #40: abandoned clients during PNG writes used to spam
+        // `studio: write response: Broken pipe` into stderr/journal.
+        let broken = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pipe");
+        assert!(
+            write_response_error(broken).is_ok(),
+            "BrokenPipe must take the quiet path"
+        );
+        let reset = std::io::Error::new(std::io::ErrorKind::ConnectionReset, "reset");
+        assert!(
+            write_response_error(reset).is_ok(),
+            "ConnectionReset must take the quiet path"
+        );
+    }
+
+    #[test]
+    fn unrelated_write_errors_are_still_surfaced() {
+        let err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let msg = write_response_error(err).expect_err("other write failures must surface");
+        assert!(
+            msg.contains("write response"),
+            "must keep the write-response prefix for real failures: {msg}"
+        );
+        assert!(
+            msg.contains("denied") || msg.to_lowercase().contains("permission"),
+            "must still include the underlying error: {msg}"
         );
     }
 
