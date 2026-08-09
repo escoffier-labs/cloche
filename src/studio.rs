@@ -658,4 +658,69 @@ mod tests {
             polish::terrain_names().len()
         );
     }
+
+    #[test]
+    fn idle_rotation_cannot_invoke_hero_fetch_or_render() {
+        // Regression for #39: the idle timer used to call paintHero() every
+        // 3.2s (`setInterval(() => { ... paintHero(); rollCaption(); }, 3200)`),
+        // which reassigned img.src to /api/backdrop or /api/card and forced a
+        // full server-side re-render forever while a tab stayed open.
+        let idle = js_function_body(PAGE, "idleTick")
+            .expect("studio page must define idleTick for the rotation timer");
+        assert!(
+            !idle.contains("paintHero"),
+            "idleTick must not call paintHero (would re-fetch hero PNG):\n{idle}"
+        );
+        assert!(
+            !idle.contains("heroSrc") && !idle.contains("/api/"),
+            "idleTick must not build or assign hero URLs:\n{idle}"
+        );
+        assert!(
+            !idle.contains(".src"),
+            "idleTick must not change an image src:\n{idle}"
+        );
+        assert!(
+            idle.contains("rollCaption"),
+            "idleTick should keep caption motion via rollCaption:\n{idle}"
+        );
+        assert!(
+            idle.contains("document.hidden"),
+            "idleTick must pause while the tab is hidden:\n{idle}"
+        );
+        assert!(
+            PAGE.contains("prefers-reduced-motion"),
+            "page must honor prefers-reduced-motion for idle motion"
+        );
+        assert!(
+            PAGE.contains("setInterval(idleTick"),
+            "idle timer must call idleTick, not an inline paintHero body"
+        );
+        assert!(
+            !PAGE.contains("paintHero(); rollCaption()"),
+            "old setInterval body must not call paintHero then rollCaption"
+        );
+    }
+
+    /// Brace-matched body of `function name(...) { ... }` in embedded JS.
+    fn js_function_body<'a>(source: &'a str, name: &str) -> Option<&'a str> {
+        let marker = format!("function {name}");
+        let start = source.find(&marker)?;
+        let after = &source[start..];
+        let open = after.find('{')?;
+        let bytes = after.as_bytes();
+        let mut depth = 0usize;
+        for (i, &b) in bytes.iter().enumerate().skip(open) {
+            match b {
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(&after[open..=i]);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
 }

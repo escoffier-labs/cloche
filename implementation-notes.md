@@ -696,3 +696,18 @@ family, and a selection function that lets the table grow.
 - **Iteration 2** (Brigade run `20260726-233210-87e24148`): full backdrops show separate rectangular hanging blocks. The 4% mask becomes a smooth dark frame without rock/rib texture.
 - **Iteration 3** (work-verify `20260726-234054-work-verify-c08c54`): full sheet still read as a row of stalactite teeth. The 4% masked card reduced to a rectangular textured border with none of the 3–4 forms visible.
 - Decision: `TerrainKind::CaveMouth` removed before the branch was squashed. Retained kinds: `dunes`, `mesa`, `badlands`, `glacier`.
+
+## Studio idle rotation CPU burn (#39, 2026-08-09)
+
+- Root cause: `setInterval` called `paintHero()` every 3.2s, which reassigned
+  `img.src` to `/api/backdrop` or `/api/card` and forced uncached procedural
+  PNG renders for as long as any tab stayed open.
+- Fix: idle tick (`idleTick`) only advances caption text via `rollCaption`;
+  `paintHero()` runs on user-driven `render()` only. CSS pulse + caption/seed
+  readout still move. Timer gated by `prefers-reduced-motion` and skipped while
+  `document.hidden`.
+- Tradeoff: in random mode the hero image no longer cycles palettes/seeds while
+  idle. Captions do. That is intentional; visual cycling required expensive
+  server renders.
+- No server-side render cache added: after the client fix, idle tabs do not hit
+  the render endpoints, so caching would be speculative.
