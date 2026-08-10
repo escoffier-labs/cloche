@@ -10,7 +10,7 @@ const MIN_REMOTION = "4.0.479";
 const MIN_WS = "8.21.0";
 
 function parseVersion(version) {
-  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
   if (!match) {
     throw new Error(`unparseable version: ${version}`);
   }

@@ -42,3 +42,23 @@ test("requires root remotion and scoped packages to stay lockstep", () => {
     /not lockstep/,
   );
 });
+
+test("rejects a Remotion prerelease at the stable floor", () => {
+  const lock = validLock();
+  lock.packages["node_modules/remotion"] = { version: "4.0.479-alpha.1" };
+
+  assert.throws(
+    () => verifyDependencyLock(lock),
+    /unparseable version: 4\.0\.479-alpha\.1/,
+  );
+});
+
+test("rejects a ws prerelease at the stable floor", () => {
+  const lock = validLock();
+  lock.packages["node_modules/ws"] = { version: "8.21.0-beta.1" };
+
+  assert.throws(
+    () => verifyDependencyLock(lock),
+    /unparseable version: 8\.21\.0-beta\.1/,
+  );
+});
