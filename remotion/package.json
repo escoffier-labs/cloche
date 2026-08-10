@@ -5,14 +5,16 @@
   "type": "module",
   "scripts": {
     "render": "remotion render src/index.ts ClocheReel",
-    "preview": "remotion preview src/index.ts"
+    "preview": "remotion preview src/index.ts",
+    "test:deps": "node --test scripts/verify-deps.test.mjs",
+    "verify:deps": "node scripts/verify-deps.mjs"
   },
   "dependencies": {
     "@paper-design/shaders-react": "^0.0.77",
-    "@remotion/cli": "^4.0.0",
+    "@remotion/cli": "4.0.507",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "remotion": "^4.0.0"
+    "remotion": "4.0.507"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",

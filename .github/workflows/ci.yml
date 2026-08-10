@@ -50,6 +50,41 @@ jobs:
       - name: Test
         run: cargo test
 
+  remotion:
+    name: Remotion
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: remotion
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: remotion/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test dependency guard
+        run: npm run test:deps
+
+      - name: Verify dependency versions
+        run: npm run verify:deps
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Render one frame
+        run: >-
+          npm exec -- remotion render src/index.ts ClocheReel /tmp/cloche-remotion-smoke
+          --frames=0 --image-format=png
+          --props='{"width":160,"height":284,"fps":1,"durationMs":1000}' --log=error
+
   msrv:
     name: MSRV (1.88)
     runs-on: ubuntu-latest
