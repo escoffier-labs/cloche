@@ -22,6 +22,7 @@ include = [
     "/remotion/package.json",
     "/remotion/package-lock.json",
     "/remotion/tsconfig.json",
+    "/remotion/scripts/**/*",
     "/remotion/src/**/*",
     "/scripts/*.ps1",
     "/scripts/*.sh",

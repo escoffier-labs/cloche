@@ -6,6 +6,7 @@
   "scripts": {
     "render": "remotion render src/index.ts ClocheReel",
     "preview": "remotion preview src/index.ts",
+    "test:deps": "node --test scripts/verify-deps.test.mjs",
     "verify:deps": "node scripts/verify-deps.mjs"
   },
   "dependencies": {

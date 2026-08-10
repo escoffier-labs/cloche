@@ -34,6 +34,7 @@ cp LICENSE README.md ROADMAP.md "$stage/"
 if [ -d remotion ]; then
   mkdir -p "$stage/remotion"
   cp remotion/package.json remotion/package-lock.json remotion/tsconfig.json "$stage/remotion/"
+  cp -r remotion/scripts "$stage/remotion/scripts"
   cp -r remotion/src "$stage/remotion/src"
 fi
 
