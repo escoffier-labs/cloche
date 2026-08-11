@@ -322,8 +322,15 @@ function heroSrc(){
     const q = `palette=${p}&seed=${SEED}${secondAxis(p)}`;
     return sample ? `/api/card?${q}` : `/api/backdrop?${q}&w=880&h=610`;
   }
-  const pool = effectivePalettes(), p = pool.length ? pool[live % pool.length] : "";
-  const q = (p ? `palette=${p}&` : "") + `seed=${ROLL[live % ROLL.length]}`;
+  // Random mode: send the saved pools + seed so /api/backdrop and /api/card
+  // resolve through the same pool-aware polish path as CLI/config. Do not pin
+  // a single palette here; affinity inside style_from_seed_in_pool picks it.
+  const seed = ROLL[live % ROLL.length];
+  const enc = xs => xs.map(encodeURIComponent).join(",");
+  let q = `seed=${seed}`;
+  if(pal().length) q += `&palettes=${enc(pal())}`;
+  if(scn().length) q += `&scenes=${enc(scn())}`;
+  if(mot().length) q += `&motifs=${enc(mot())}`;
   return sample ? `/api/card?${q}` : `/api/backdrop?${q}&w=880&h=610`;
 }
 
@@ -460,57 +467,64 @@ function save(){
 }
 
 async function boot(){
-  const state = await (await fetch("/api/state")).json();
-  S = { polish: state.config.polish, options: state.options };
-  S.polish.palettes ||= []; S.polish.scenes ||= []; S.polish.motifs ||= [];
-  sample = state.sample;
-  el("configPath").textContent = state.configPath;
-  el("saveState").textContent = state.exists ? "saved to" : "will save to";
-  const warns = state.warnings || [];
-  el("configWarn").hidden = warns.length === 0;
-  el("configWarn").textContent = warns.length
-    ? warns.join(" ")
-    : "";
+  try{
+    const res = await fetch("/api/state");
+    if(!res.ok) throw new Error(res.statusText || String(res.status));
+    const state = await res.json();
+    if(!state || !state.config || !state.options) throw new Error("malformed state");
+    S = { polish: state.config.polish, options: state.options };
+    S.polish.palettes ||= []; S.polish.scenes ||= []; S.polish.motifs ||= [];
+    sample = state.sample;
+    el("configPath").textContent = state.configPath;
+    el("saveState").textContent = state.exists ? "saved to" : "will save to";
+    const warns = state.warnings || [];
+    el("configWarn").hidden = warns.length === 0;
+    el("configWarn").textContent = warns.length
+      ? warns.join(" ")
+      : "";
 
-  state.options.palettes.forEach(p => kinds[p.name] = p.kind);
-  const byKind = k => state.options.palettes.filter(p => p.kind === k).map(p => p.name);
-  focus.space = byKind("space")[0];
-  focus.pattern = byKind("pattern")[0];
-  el("focusSpace").textContent = focus.space;
-  el("focusPattern").textContent = focus.pattern;
+    state.options.palettes.forEach(p => kinds[p.name] = p.kind);
+    const byKind = k => state.options.palettes.filter(p => p.kind === k).map(p => p.name);
+    focus.space = byKind("space")[0];
+    focus.pattern = byKind("pattern")[0];
+    el("focusSpace").textContent = focus.space;
+    el("focusPattern").textContent = focus.pattern;
 
-  byKind("space").forEach(n => el("gridSpace").appendChild(swatch(n, "palette")));
-  byKind("gradient").forEach(n => el("gridGradient").appendChild(swatch(n, "palette")));
-  byKind("pattern").forEach(n => el("gridPattern").appendChild(swatch(n, "palette")));
-  state.options.scenes.forEach(n => el("gridScene").appendChild(swatch(n, "scene")));
-  state.options.motifs.forEach(n => el("gridMotif").appendChild(swatch(n, "motif")));
+    byKind("space").forEach(n => el("gridSpace").appendChild(swatch(n, "palette")));
+    byKind("gradient").forEach(n => el("gridGradient").appendChild(swatch(n, "palette")));
+    byKind("pattern").forEach(n => el("gridPattern").appendChild(swatch(n, "palette")));
+    state.options.scenes.forEach(n => el("gridScene").appendChild(swatch(n, "scene")));
+    state.options.motifs.forEach(n => el("gridMotif").appendChild(swatch(n, "motif")));
 
-  el("mRandom").onclick = () => { S.polish.mode = "random"; render(); save(); };
-  el("mPinned").onclick = () => {
-    S.polish.mode = "pinned";
-    S.polish.palette ||= pal()[0] || state.options.palettes[0].name;
-    setFocus(S.polish.palette);
-    render(); save();
-  };
-  document.querySelectorAll("[data-bulk]").forEach(b => b.onclick = () => {
-    const k = b.dataset.bulk;
-    if(k === "pal-all") S.polish.palettes = state.options.palettes.map(p => p.name);
-    // Clearing the palette pool restores the built-in rotation rather than
-    // leaving the picker with nothing to draw from.
-    if(k === "pal-none") S.polish.palettes = [];
-    if(k === "scn-all") S.polish.scenes = [...state.options.scenes];
-    if(k === "scn-none") S.polish.scenes = [];
-    if(k === "mot-all") S.polish.motifs = [...state.options.motifs];
-    if(k === "mot-none") S.polish.motifs = [];
-    render(); save();
-  });
+    el("mRandom").onclick = () => { S.polish.mode = "random"; render(); save(); };
+    el("mPinned").onclick = () => {
+      S.polish.mode = "pinned";
+      S.polish.palette ||= pal()[0] || state.options.palettes[0].name;
+      setFocus(S.polish.palette);
+      render(); save();
+    };
+    document.querySelectorAll("[data-bulk]").forEach(b => b.onclick = () => {
+      const k = b.dataset.bulk;
+      if(k === "pal-all") S.polish.palettes = state.options.palettes.map(p => p.name);
+      // Clearing the palette pool restores the built-in rotation rather than
+      // leaving the picker with nothing to draw from.
+      if(k === "pal-none") S.polish.palettes = [];
+      if(k === "scn-all") S.polish.scenes = [...state.options.scenes];
+      if(k === "scn-none") S.polish.scenes = [];
+      if(k === "mot-all") S.polish.motifs = [...state.options.motifs];
+      if(k === "mot-none") S.polish.motifs = [];
+      render(); save();
+    });
 
-  render();
-  // Idle motion is caption/CSS only. paintHero() must not run on a timer:
-  // reassigning img.src hits /api/backdrop or /api/card and forces a full
-  // server-side re-render every tick (#39).
-  if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches){
-    setInterval(idleTick, 3200);
+    render();
+    // Idle motion is caption/CSS only. paintHero() must not run on a timer:
+    // reassigning img.src hits /api/backdrop or /api/card and forces a full
+    // server-side re-render every tick (#39).
+    if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches){
+      setInterval(idleTick, 3200);
+    }
+  }catch(err){
+    el("saveState").textContent = "not loaded: " + (err && err.message ? err.message : err);
   }
 }
 

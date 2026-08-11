@@ -366,13 +366,38 @@ fn save_body(body: &[u8]) -> Result<(), String> {
     config::save_to(&path, &stored).map_err(|err| err.to_string())
 }
 
+/// Comma-separated query list, percent-decoded as a whole then split.
+fn query_list(query: &str, key: &str) -> Vec<String> {
+    query_get(query, key)
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn style_from_query(query: &str) -> polish::PresentationStyle {
     let seed = query_get(query, "seed")
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(0);
-    let mut style = query_get(query, "palette")
-        .and_then(|name| polish::style_with_palette(seed, &name))
-        .unwrap_or_else(|| polish::style_from_seed(seed));
+    let palettes = query_list(query, "palettes");
+    let scenes = query_list(query, "scenes");
+    let motifs = query_list(query, "motifs");
+
+    // An explicit `palette=` pin (swatches, pinned mode) keeps the existing
+    // path. Random hero previews omit it and go through the same pool-aware
+    // resolver CLI/config use: `style_from_seed_in_pool`. Sky/terrain pools are
+    // not accepted on this surface (#41 holds terrain; no sky UI).
+    let mut style = match query_get(query, "palette") {
+        Some(name) => polish::style_with_palette(seed, &name).unwrap_or_else(|| {
+            polish::style_from_seed_in_pool(seed, &palettes, &scenes, &motifs, &[], &[])
+        }),
+        None => polish::style_from_seed_in_pool(seed, &palettes, &scenes, &motifs, &[], &[]),
+    };
     if let Some(scene) = query_get(query, "scene").and_then(|n| polish::scene_from_name(&n))
         && style.is_space()
     {
@@ -1075,5 +1100,98 @@ mod tests {
         assert!(PAGE.contains("id=\"gridScene\""));
         assert!(PAGE.contains(">Randomize<") || PAGE.contains(">Randomize</"));
         assert!(PAGE.contains(">Pin one<") || PAGE.contains("Pin one"));
+    }
+
+    #[test]
+    fn boot_transport_or_json_failure_leaves_a_live_error() {
+        // Defect: bare await of fetch().json() left aria-live saveState stuck on
+        // "loading" when the request failed or the body was not JSON.
+        let boot = js_function_body(PAGE, "boot").expect("boot");
+        assert!(
+            boot.contains("try") && boot.contains("catch"),
+            "boot must catch fetch/status/JSON failures:\n{boot}"
+        );
+        assert!(
+            boot.contains("not loaded:") || boot.contains("failed to load"),
+            "boot failure must write a useful live error into saveState:\n{boot}"
+        );
+        assert!(
+            boot.contains("saveState")
+                && (boot.contains(".textContent") || boot.contains("textContent =")),
+            "boot error path must update the live saveState region:\n{boot}"
+        );
+        // Must not erase the successful-path warning / save status machinery.
+        assert!(
+            boot.contains("configWarn") && boot.contains("warnings"),
+            "boot success path must keep surfacing config warnings:\n{boot}"
+        );
+        let save = js_function_body(PAGE, "save").expect("save");
+        assert!(
+            save.contains("not saved:"),
+            "save failure visibility must remain intact:\n{save}"
+        );
+    }
+
+    #[test]
+    fn random_hero_honors_scene_and_motif_pools_deterministically() {
+        // Defect: random heroSrc sent only palette+seed, so scene/motif pools
+        // never reached /api/backdrop or /api/card.
+        let hero = js_function_body(PAGE, "heroSrc").expect("heroSrc");
+        assert!(
+            hero.contains("scenes") && hero.contains("motifs"),
+            "random heroSrc must forward scene and motif pools:\n{hero}"
+        );
+        assert!(
+            hero.contains("palettes") || hero.contains("pal()"),
+            "random heroSrc must forward the palette pool (or unconstrained default):\n{hero}"
+        );
+
+        // Single-entry pools pin via affinity inside style_from_seed_in_pool.
+        let jwst = style_from_query("palettes=orion-emission&scenes=jwst&seed=7");
+        let alma = style_from_query("palettes=orion-emission&scenes=alma&seed=7");
+        assert_eq!(jwst.palette_name, "orion-emission");
+        assert_eq!(jwst.scene, polish::scene_from_name("jwst"));
+        assert_eq!(alma.scene, polish::scene_from_name("alma"));
+        assert_ne!(
+            jwst.scene, alma.scene,
+            "restricted scene pools must change the resolved style"
+        );
+
+        let plaid = style_from_query("palettes=tartan-moss&motifs=plaid&seed=11");
+        let grid = style_from_query("palettes=tartan-moss&motifs=grid&seed=11");
+        assert_eq!(plaid.motif, polish::motif_from_name("plaid"));
+        assert_eq!(grid.motif, polish::motif_from_name("grid"));
+        assert_ne!(plaid.motif, grid.motif);
+
+        let png_jwst =
+            backdrop_png("palettes=orion-emission&scenes=jwst&seed=7&w=32&h=24").expect("jwst png");
+        let png_alma =
+            backdrop_png("palettes=orion-emission&scenes=alma&seed=7&w=32&h=24").expect("alma png");
+        assert_ne!(
+            png_jwst, png_alma,
+            "restricted scene pools must change hero/backdrop output"
+        );
+        let again =
+            backdrop_png("palettes=orion-emission&scenes=jwst&seed=7&w=32&h=24").expect("again");
+        assert_eq!(
+            png_jwst, again,
+            "pool-aware hero mapping must stay deterministic"
+        );
+
+        // Matches the pool-aware polish resolver the CLI/config path uses.
+        let expected = polish::style_from_seed_in_pool(
+            7,
+            &["orion-emission".into()],
+            &["jwst".into()],
+            &[],
+            &[],
+            &[],
+        );
+        assert_eq!(jwst.scene, expected.scene);
+        assert_eq!(jwst.palette_name, expected.palette_name);
+
+        // Pinned / swatch queries with an explicit palette+scene stay valid.
+        let pinned = style_from_query("palette=orion-emission&scene=jwst&seed=1");
+        assert_eq!(pinned.scene, polish::scene_from_name("jwst"));
     }
 }
