@@ -100,6 +100,7 @@ code{font-family:var(--mono)}
   font-family:var(--mono); font-size:12px; color:var(--faint); padding:2px 5px;
   border-radius:4px; transition:color .16s, background .16s}
 .bulk button:hover{color:var(--ink); background:#17171d}
+.bulk button:focus-visible{outline:2px solid var(--accent); outline-offset:2px; color:var(--ink)}
 
 .group{margin-bottom:26px}
 .group:last-child{margin-bottom:0}
@@ -149,7 +150,7 @@ code{font-family:var(--mono)}
 
 <header class="bar">
   <div class="wordmark">cloche <span>studio</span></div>
-  <div class="path"><span class="state" id="saveState">loading</span>
+  <div class="path"><span class="state" id="saveState" aria-live="polite">loading</span>
     <span id="configPath"></span><i class="dot" id="dot"></i></div>
 </header>
 
@@ -166,10 +167,10 @@ code{font-family:var(--mono)}
 
   <aside class="controls">
     <div>
-      <span class="lab">Every capture</span>
-      <div class="modes" role="group">
-        <button id="mRandom" aria-pressed="true">Randomize</button>
-        <button id="mPinned" aria-pressed="false">Pin one</button>
+      <span class="lab" id="modeLab">Every capture</span>
+      <div class="modes" role="group" aria-labelledby="modeLab">
+        <button type="button" id="mRandom" aria-pressed="true">Randomize</button>
+        <button type="button" id="mPinned" aria-pressed="false">Pin one</button>
       </div>
       <p class="hint" id="modeHint">Draws from the backdrops you leave switched on below.</p>
     </div>
@@ -178,7 +179,8 @@ code{font-family:var(--mono)}
       <div class="row"><dt>scene look</dt><dd id="roScene">—</dd></div>
       <div class="row"><dt>motif</dt><dd id="roMotif">—</dd></div>
     </dl>
-    <p class="note" id="conflict" hidden></p>
+    <p class="note" id="configWarn" hidden role="status" aria-live="polite"></p>
+    <p class="note" id="conflict" hidden role="status" aria-live="polite"></p>
     <div class="cmd">
       <span class="lab">Same thing from the terminal</span>
       <pre id="cmd"></pre>
@@ -189,7 +191,7 @@ code{font-family:var(--mono)}
 <section class="sheet">
   <div class="head">
     <h2>Backdrops</h2><span class="flagname">--palette</span>
-    <span class="bulk"><button data-bulk="pal-all">all</button><button data-bulk="pal-none">none</button></span>
+    <span class="bulk"><button type="button" data-bulk="pal-all">all</button><button type="button" data-bulk="pal-none">none</button></span>
     <span class="count" id="palCount"></span>
   </div>
   <p class="sub">The object in frame. Every sky is drawn from noise at render time, so the seed decides the detail.</p>
@@ -212,7 +214,7 @@ code{font-family:var(--mono)}
 <section class="sheet">
   <div class="head">
     <h2>Scene looks</h2><span class="flagname">--scene</span>
-    <span class="bulk"><button data-bulk="scn-all">all</button><button data-bulk="scn-none">none</button></span>
+    <span class="bulk"><button type="button" data-bulk="scn-all">all</button><button type="button" data-bulk="scn-none">none</button></span>
     <span class="count" id="scnCount"></span>
   </div>
   <p class="sub">How it was imaged. Leave every one off to let the seed decide.
@@ -223,7 +225,7 @@ code{font-family:var(--mono)}
 <section class="sheet">
   <div class="head">
     <h2>Motifs</h2><span class="flagname">--motif</span>
-    <span class="bulk"><button data-bulk="mot-all">all</button><button data-bulk="mot-none">none</button></span>
+    <span class="bulk"><button type="button" data-bulk="mot-all">all</button><button type="button" data-bulk="mot-none">none</button></span>
     <span class="count" id="motCount"></span>
   </div>
   <p class="sub">How the cloth is woven. Leave every one off to let the seed decide.
@@ -265,7 +267,9 @@ function swatchSrc(name, kind){
 
 function swatch(name, kind){
   const b = document.createElement("button");
+  b.type = "button";
   b.className = "thumb"; b.dataset.name = name; b.dataset.kind = kind;
+  b.setAttribute("aria-pressed", "false");
   b.innerHTML = `<span class="shot"><img alt="${name}" loading="lazy" src="/api/backdrop?${swatchSrc(name, kind)}"></span><span class="name">${name}</span>`;
   b.onclick = () => toggle(name, kind);
   if(kind === "palette"){
@@ -347,19 +351,39 @@ function render(){
 
   document.querySelectorAll(".thumb").forEach(b => {
     const n = b.dataset.name, kind = b.dataset.kind;
-    b.classList.remove("on","off","pinned","dead");
+    b.classList.remove("on","off","pinned","dead","auto");
     if(p){
-      if(kind === "palette"){ b.classList.add(n === S.polish.palette ? "pinned" : "off"); return; }
+      if(kind === "palette"){
+        const on = n === S.polish.palette;
+        b.classList.add(on ? "pinned" : "off");
+        b.setAttribute("aria-pressed", String(on));
+        return;
+      }
       const applies = kind === "scene" ? isSpace(S.polish.palette) : isPattern(S.polish.palette);
-      if(!applies){ b.classList.add("dead"); return; }
+      if(!applies){
+        b.classList.add("dead");
+        b.setAttribute("aria-pressed", "false");
+        return;
+      }
       const held = kind === "scene" ? S.polish.scene : S.polish.motif;
-      b.classList.add(n === held ? "pinned" : "off");
+      const on = n === held;
+      b.classList.add(on ? "pinned" : "off");
+      b.setAttribute("aria-pressed", String(on));
     } else if(kind === "palette"){
-      b.classList.add(effectivePalettes().includes(n) ? "on" : "off");
+      const on = effectivePalettes().includes(n);
+      b.classList.add(on ? "on" : "off");
+      b.setAttribute("aria-pressed", String(on));
     } else {
       // No scene or motif pool means the seed decides, which is a real state,
       // not an empty one.
-      b.classList.add(listFor(kind).length === 0 ? "auto" : listFor(kind).includes(n) ? "on" : "off");
+      if(listFor(kind).length === 0){
+        b.classList.add("auto");
+        b.setAttribute("aria-pressed", "false");
+      } else {
+        const on = listFor(kind).includes(n);
+        b.classList.add(on ? "on" : "off");
+        b.setAttribute("aria-pressed", String(on));
+      }
     }
   });
 
@@ -442,6 +466,11 @@ async function boot(){
   sample = state.sample;
   el("configPath").textContent = state.configPath;
   el("saveState").textContent = state.exists ? "saved to" : "will save to";
+  const warns = state.warnings || [];
+  el("configWarn").hidden = warns.length === 0;
+  el("configWarn").textContent = warns.length
+    ? warns.join(" ")
+    : "";
 
   state.options.palettes.forEach(p => kinds[p.name] = p.kind);
   const byKind = k => state.options.palettes.filter(p => p.kind === k).map(p => p.name);

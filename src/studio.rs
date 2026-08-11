@@ -763,4 +763,317 @@ mod tests {
         }
         None
     }
+
+    /// Serializes tests that temporarily redirect `CLOCHE_CONFIG`.
+    static CONFIG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_temp_config<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
+        let _guard = CONFIG_LOCK.lock().expect("config lock");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.json");
+        // SAFETY: held under CONFIG_LOCK for the duration of the closure; restored after.
+        unsafe {
+            std::env::set_var("CLOCHE_CONFIG", &path);
+        }
+        let out = f(&path);
+        unsafe {
+            std::env::remove_var("CLOCHE_CONFIG");
+        }
+        out
+    }
+
+    #[test]
+    fn page_boots_from_api_state_and_surfaces_config_loading() {
+        // Boot must load persisted prefs from /api/state and show loading/saved status.
+        let boot = js_function_body(PAGE, "boot").expect("boot");
+        assert!(
+            boot.contains("fetch(\"/api/state\")") || boot.contains("fetch('/api/state')"),
+            "boot must fetch /api/state:\n{boot}"
+        );
+        assert!(
+            boot.contains("configPath") && boot.contains("saveState"),
+            "boot must surface the config path and save status:\n{boot}"
+        );
+        assert!(
+            PAGE.contains("id=\"saveState\"") && PAGE.contains(">loading<"),
+            "page must start in a visible loading state"
+        );
+        let state = with_temp_config(|path| {
+            let prefs = config::PolishPrefs {
+                mode: config::PolishMode::Pinned,
+                palette: Some("ember-glow".into()),
+                ..config::PolishPrefs::default()
+            };
+            config::save_to(
+                path,
+                &config::ClocheConfig {
+                    polish: prefs.clone(),
+                },
+            )
+            .expect("save");
+            state_value()
+        });
+        assert_eq!(state["config"]["polish"]["mode"], "pinned");
+        assert_eq!(state["config"]["polish"]["palette"], "ember-glow");
+        assert!(state["exists"].as_bool().expect("exists"));
+        assert!(state["configPath"].is_string());
+        assert!(
+            state["options"]["palettes"]
+                .as_array()
+                .expect("palettes")
+                .len()
+                >= 2
+        );
+        assert!(
+            !state["options"]["scenes"]
+                .as_array()
+                .expect("scenes")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn save_round_trips_polish_prefs_through_api_config() {
+        with_temp_config(|path| {
+            let body = br#"{"mode":"pinned","palette":"orion-emission","scene":"jwst","palettes":[],"scenes":[],"motifs":[],"skies":[],"terrains":[]}"#;
+            save_body(body).expect("save");
+            assert!(path.exists(), "POST /api/config must persist to disk");
+            let (loaded, warnings) = config::load_from(path);
+            assert!(warnings.is_empty(), "{warnings:?}");
+            assert_eq!(loaded.polish.mode, config::PolishMode::Pinned);
+            assert_eq!(loaded.polish.palette.as_deref(), Some("orion-emission"));
+            assert_eq!(loaded.polish.scene.as_deref(), Some("jwst"));
+
+            let response = route("POST", "/api/config", "", body);
+            assert_eq!(response.status, 200);
+            let value: serde_json::Value =
+                serde_json::from_slice(&response.body).expect("state json");
+            assert_eq!(value["config"]["polish"]["palette"], "orion-emission");
+            assert_eq!(value["config"]["polish"]["scene"], "jwst");
+        });
+        let save = js_function_body(PAGE, "save").expect("save");
+        assert!(
+            save.contains("/api/config") && save.contains("POST"),
+            "page must persist through /api/config:\n{save}"
+        );
+        assert!(
+            save.contains("JSON.stringify(S.polish)"),
+            "page must write the live PolishPrefs object:\n{save}"
+        );
+    }
+
+    #[test]
+    fn page_shows_debounced_save_failure() {
+        let save = js_function_body(PAGE, "save").expect("save");
+        assert!(
+            save.contains("setTimeout") && save.contains("350"),
+            "saves must debounce (~350ms):\n{save}"
+        );
+        assert!(
+            save.contains("not saved:"),
+            "failed saves must become visible:\n{save}"
+        );
+        assert!(
+            save.contains("saving to") || PAGE.contains("saving to"),
+            "saving status must be live while the write is in flight"
+        );
+        assert!(
+            PAGE.contains("aria-live")
+                && PAGE
+                    .split("id=\"saveState\"")
+                    .nth(1)
+                    .expect("saveState")
+                    .contains("aria-live"),
+            "save status must be a live region so failures are announced"
+        );
+    }
+
+    #[test]
+    fn page_keyboard_and_aria_contract() {
+        // Mode group needs an accessible name; focus must be visible on every
+        // native control, including bulk toggles; pressed state tracks selection.
+        assert!(
+            PAGE.contains("role=\"group\"")
+                && PAGE.contains("aria-labelledby=\"modeLab\"")
+                && PAGE.contains("id=\"modeLab\""),
+            "Randomize/Pin group must have an accessible label via aria-labelledby"
+        );
+        assert!(
+            PAGE.contains("id=\"mRandom\"")
+                && PAGE.contains("id=\"mPinned\"")
+                && PAGE.contains("aria-pressed"),
+            "mode controls must remain native buttons with aria-pressed"
+        );
+        assert!(
+            PAGE.contains(".modes button:focus-visible")
+                && PAGE.contains(".thumb:focus-visible")
+                && PAGE.contains(".bulk button:focus-visible"),
+            "mode, swatch, and bulk controls must show visible focus"
+        );
+        let render = js_function_body(PAGE, "render").expect("render");
+        assert!(
+            render.contains("aria-pressed"),
+            "render must keep aria-pressed in sync for mode and/or swatches:\n{render}"
+        );
+        let swatch = js_function_body(PAGE, "swatch").expect("swatch");
+        assert!(
+            swatch.contains("button") || PAGE.contains("createElement(\"button\")"),
+            "swatches must be native buttons for keyboard activation"
+        );
+        assert!(
+            PAGE.contains("type=\"button\"")
+                || swatch.contains("type") && swatch.contains("button"),
+            "interactive controls should be explicit type=button"
+        );
+    }
+
+    #[test]
+    fn malformed_config_warning_is_surfaced_to_the_page() {
+        let warnings = with_temp_config(|path| {
+            std::fs::write(path, b"{ not json").expect("write");
+            let value = state_value();
+            value["warnings"]
+                .as_array()
+                .expect("warnings array")
+                .iter()
+                .map(|w| w.as_str().unwrap_or("").to_string())
+                .collect::<Vec<_>>()
+        });
+        assert!(
+            warnings.iter().any(|w| w.contains("using defaults")
+                || w.contains("malformed")
+                || w.contains("parse")),
+            "state must carry the malformed-config warning: {warnings:?}"
+        );
+        let boot = js_function_body(PAGE, "boot").expect("boot");
+        assert!(
+            boot.contains("warnings")
+                && (PAGE.contains("id=\"configWarn\"") || PAGE.contains("id=\"warnings\"")),
+            "boot must surface state.warnings in the page"
+        );
+        assert!(
+            PAGE.contains("aria-live")
+                && (PAGE.contains("id=\"configWarn\"") || PAGE.contains("id=\"warnings\"")),
+            "config warnings must be announced via a live region"
+        );
+    }
+
+    #[test]
+    fn contradictory_pin_warning_is_visible_in_the_page() {
+        let render = js_function_body(PAGE, "render").expect("render");
+        assert!(
+            render.contains("conflict")
+                && render.contains("isSpace")
+                && (render.contains("scene look") || render.contains("deep-space")),
+            "pinned scene on a non-space palette must produce a visible conflict:\n{render}"
+        );
+        assert!(
+            PAGE.contains("id=\"conflict\"")
+                && PAGE.contains("role=\"status\"")
+                && PAGE
+                    .split("id=\"conflict\"")
+                    .nth(1)
+                    .expect("conflict attrs")
+                    .contains("aria-live"),
+            "conflict note must be a polite live status region"
+        );
+    }
+
+    #[test]
+    fn unknown_value_rejection_on_ui_write_leaves_config_untouched() {
+        with_temp_config(|path| {
+            let initial = config::ClocheConfig {
+                polish: config::PolishPrefs {
+                    mode: config::PolishMode::Pinned,
+                    palette: Some("aurora-teal".into()),
+                    ..config::PolishPrefs::default()
+                },
+            };
+            config::save_to(path, &initial).expect("seed");
+            let before = std::fs::read(path).expect("read before");
+
+            let response = route(
+                "POST",
+                "/api/config",
+                "",
+                br#"{"mode":"pinned","palette":"hotdog-stand"}"#,
+            );
+            assert_eq!(response.status, 400);
+            let after = std::fs::read(path).expect("read after");
+            assert_eq!(before, after, "rejected UI writes must not mutate the file");
+
+            let err = save_body(br#"{"skies":["not-a-sky"]}"#).expect_err("sky");
+            assert!(err.contains("not-a-sky"), "{err}");
+            let err = save_body(br#"{"terrains":["butte"]}"#).expect_err("terrain");
+            assert!(err.contains("butte"), "{err}");
+        });
+    }
+
+    #[test]
+    fn deterministic_preview_mapping_for_gradient_and_space() {
+        let a = backdrop_png("palette=ember-glow&seed=7&w=32&h=24").expect("a");
+        let b = backdrop_png("palette=ember-glow&seed=7&w=32&h=24").expect("b");
+        assert_eq!(
+            a, b,
+            "identical gradient queries must map to identical PNGs"
+        );
+
+        let space_a =
+            backdrop_png("palette=orion-emission&scene=jwst&seed=7&w=32&h=24").expect("sa");
+        let space_b =
+            backdrop_png("palette=orion-emission&scene=jwst&seed=7&w=32&h=24").expect("sb");
+        assert_eq!(
+            space_a, space_b,
+            "identical space queries must map to identical PNGs"
+        );
+        assert_ne!(a, space_a, "gradient and space previews must differ");
+
+        let style = style_from_query("palette=orion-emission&scene=jwst&seed=7");
+        assert_eq!(style.palette_name, "orion-emission");
+        assert_eq!(style.scene, polish::scene_from_name("jwst"));
+        assert_eq!(style.seed, 7);
+
+        let swatch = js_function_body(PAGE, "swatchSrc").expect("swatchSrc");
+        assert!(
+            swatch.contains("SEED") || swatch.contains("seed="),
+            "swatch URLs must pin a deterministic seed:\n{swatch}"
+        );
+        assert!(
+            PAGE.contains("const SEED = 21") || PAGE.contains("const SEED=21"),
+            "page must keep a fixed SEED so swatches stay comparable"
+        );
+    }
+
+    #[test]
+    fn page_introduces_no_terrain_or_sky_surface() {
+        // Issue #41 retains terrain; sky/pattern stay compatibility-only.
+        // The original Phase 2 surface is gradient + space (+ existing pattern).
+        for forbidden in [
+            "id=\"gridSky\"",
+            "id=\"gridTerrain\"",
+            "id=\"gridSkies\"",
+            "id=\"gridTerrains\"",
+            "data-kind=\"sky\"",
+            "data-kind=\"terrain\"",
+            "data-bulk=\"sky",
+            "data-bulk=\"ter",
+            "flagname\">--sky",
+            "flagname\">--terrain",
+            "<h2>Sky",
+            "<h2>Terrain",
+            "<h2>Skies",
+            "<h2>Terrains",
+        ] {
+            assert!(
+                !PAGE.contains(forbidden),
+                "studio page must not introduce a sky/terrain picker surface ({forbidden})"
+            );
+        }
+        // Original gradient + space grids must remain.
+        assert!(PAGE.contains("id=\"gridSpace\""));
+        assert!(PAGE.contains("id=\"gridGradient\""));
+        assert!(PAGE.contains("id=\"gridScene\""));
+        assert!(PAGE.contains(">Randomize<") || PAGE.contains(">Randomize</"));
+        assert!(PAGE.contains(">Pin one<") || PAGE.contains("Pin one"));
+    }
 }
