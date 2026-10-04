@@ -43,5 +43,10 @@ pub fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
         Command::Mcp(args) => mcp::run(args),
         Command::Setup(args) => setup::run(args),
         Command::Studio(args) => studio::run(args),
+        #[cfg(target_os = "linux")]
+        Command::ClipboardServe { png_path } => {
+            clipboard::serve_png(&png_path)?;
+            Ok(ExitCode::SUCCESS)
+        }
     }
 }

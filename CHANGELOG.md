@@ -65,6 +65,9 @@ All notable changes to this project are documented here. The format follows
   falls back to defaults instead of failing the capture.
 
 ### Fixed
+- X11 clipboard images use a detached arboard server instead of xclip, avoiding
+  clipboard stalls after an abandoned large-image transfer. Clipboard owners
+  also close inherited output pipes so capture JSON command substitution returns.
 - `cloche studio` served one connection at a time, so a browser pre-opening a
   socket without sending a request wedged the accept loop and the page loaded no
   swatches. Connections are handled per thread with read and write deadlines.

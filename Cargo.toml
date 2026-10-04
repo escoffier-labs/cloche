@@ -48,5 +48,8 @@ serde = { version = "1.0", default-features = false, features = ["std", "derive"
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 thiserror = { version = "2.0", default-features = false, features = ["std"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+arboard = { version = "3.6", default-features = false, features = ["image-data"] }
+
 [dev-dependencies]
 tempfile = "3.23"

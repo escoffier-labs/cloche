@@ -712,6 +712,25 @@ family, and a selection function that lets the table grow.
 - No server-side render cache added: after the client fix, idle tabs do not hit
   the render endpoints, so caching would be speculative.
 
+## X11 clipboard ownership
+
+- xclip 0.13 uses INCR for large images. An abandoned transfer leaves xclip
+  waiting on one requestor and prevents it from answering any clipboard request,
+  including TARGETS. Its background process also inherits stdout and holds
+  capture JSON command substitution open until it exits.
+- The Linux-only arboard dependency uses `default-features = false` and
+  `image-data`, without `wayland-data-control`. Its X11 backend writes the whole
+  property in one write and keeps no per-requestor INCR state. The existing
+  image crate decodes the PNG into RGBA for arboard.
+- A hidden `clipboard-serve` child owns CLIPBOARD with arboard's blocking
+  `set().wait().image(...)` until another application takes ownership. The child
+  uses discovered desktop environment variables, a separate process group, and
+  null stdin/stdout/stderr. The parent returns after spawning it, so child
+  decoding or clipboard setup failures cannot be reported as capture warnings.
+- Wayland retains wl-copy with null stdout/stderr. Without wl-copy, a discovered
+  DISPLAY selects the X11 server. Tests cover selection and hidden-command
+  parsing without opening a display or changing the clipboard.
+
 ## Studio client-disconnect write noise (#40, 2026-08-09)
 
 - Symptom: hard-reload / tab close while `/api/backdrop` or `/api/card` PNG
