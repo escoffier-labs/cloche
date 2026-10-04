@@ -31,7 +31,7 @@ Cloche captures whatever is on your display: the active window, a selected windo
 ## Out of scope
 
 - Issues that require an attacker to already have write access to your machine, your desktop session, or your agent config.
-- Behavior of the desktop tools Cloche shells out to (`grim`, `flameshot`, ImageMagick `import`, `xdotool`, `wmctrl`, `wl-copy`, `xclip`). Report those to their respective projects.
+- Behavior of the desktop tools Cloche shells out to (`grim`, `flameshot`, ImageMagick `import`, `xdotool`, `wmctrl`, `wl-copy`). Report those to their respective projects.
 - Bugs in Remotion, HyperFrames, or Node tooling used by `cloche reels render`. Report those upstream.
 - Content you captured and chose to share yourself. Cloche frames what is on your screen; it does not redact it.
 

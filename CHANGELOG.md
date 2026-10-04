@@ -66,8 +66,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 - X11 clipboard images use a detached arboard server instead of xclip, avoiding
-  clipboard stalls after an abandoned large-image transfer. Clipboard owners
-  also close inherited output pipes so capture JSON command substitution returns.
+  clipboard stalls after an abandoned large-image transfer. A private readiness
+  pipe confirms ownership within 3 seconds or reports a capture warning. The
+  child rejects input PNG files above 15 MiB, exits on X connection loss via a
+  30-second watchdog, and closes inherited output pipes and wrapper lock fds.
 - `cloche studio` served one connection at a time, so a browser pre-opening a
   socket without sending a request wedged the accept loop and the page loaded no
   swatches. Connections are handled per thread with read and write deadlines.
