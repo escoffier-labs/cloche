@@ -7,7 +7,7 @@
 # Requirements:
 #   - cloche on PATH
 #   - a region selector: flameshot (any session) or ImageMagick (X11)
-#   - optional: a clipboard helper (wl-copy on Wayland, xclip on X11)
+#   - optional: wl-copy on Wayland (X11 uses Cloche's built-in arboard server)
 #   - optional: notify-send for the desktop notification
 #
 # Override the output location with CLOCHE_SHOTS_DIR.

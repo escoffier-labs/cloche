@@ -712,6 +712,48 @@ family, and a selection function that lets the table grow.
 - No server-side render cache added: after the client fix, idle tabs do not hit
   the render endpoints, so caching would be speculative.
 
+## X11 clipboard ownership
+
+- xclip 0.13 uses INCR for large images. An abandoned transfer leaves xclip
+  waiting on one requestor and prevents it from answering any clipboard request,
+  including TARGETS. Its background process also inherits stdout and holds
+  capture JSON command substitution open until it exits.
+- The Linux-only arboard dependency uses `default-features = false` and
+  `image-data`, without `wayland-data-control`. Its X11 backend writes the whole
+  property in one write and keeps no per-requestor INCR state. The existing
+  image crate decodes the PNG into RGBA for arboard. arboard re-encodes the pixels
+  as PNG and drops the input PNG's metadata. The child holds both RGBA pixels
+  and the encoded PNG in memory while it owns the clipboard.
+- After decoding, the child rejects input PNG files larger than 15 MiB before
+  taking ownership. This disk-size guard leaves room below X BIG-REQUESTS'
+  roughly 16 MiB cap. It is approximate because arboard's re-encoded PNG can
+  differ in size. RGBA dimensions do not measure the transmitted property.
+- A hidden `clipboard-serve` child first calls `set().image(data.clone())` to
+  acquire CLIPBOARD without blocking. It writes and flushes a single ready byte
+  to a private anonymous stdout pipe, closes fd 1, then calls the blocking
+  `set().wait().image(data)` until another application takes ownership. Dropping
+  a Rust `Stdout` handle alone would leave fd 1 open, so a `File` owns and closes
+  it instead. The child uses discovered desktop environment variables, a
+  separate process group, and null stdin/stderr. It never inherits the capture
+  caller's stdout pipe.
+- The parent closes its copy of the pipe's write end after spawning and waits
+  at most 3 seconds for readiness. An `error: ...` line, EOF, a read failure, or
+  a timeout becomes a capture warning. A failed readiness check kills and reaps
+  the child so it cannot acquire the clipboard after the parent returns.
+- Before opening the image or X connection, the child enumerates inherited
+  descriptors above 2 in `/proc/self/fd`. It collects them before closing any,
+  skips the directory iterator's now-closed descriptor, and closes the rest.
+  This releases wrapper locks such as `exec 9>lock; flock -n 9` while preserving
+  the readiness pipe on fd 1.
+- After readiness, a watchdog queries text through a second arboard Clipboard
+  every 30 seconds. `ContentNotAvailable` is expected for a PNG and is ignored.
+  Any other error, including Clipboard creation failure, exits the child because
+  arboard's blocking wait may never return after the X server disappears.
+- Wayland retains wl-copy with null stdout/stderr. Without wl-copy, a discovered
+  DISPLAY selects the X11 server. Tests cover selection and hidden-command
+  parsing, readiness messages and reading a ready byte without EOF, and the
+  encoded-size guard without opening a display or changing the clipboard.
+
 ## Studio client-disconnect write noise (#40, 2026-08-09)
 
 - Symptom: hard-reload / tab close while `/api/backdrop` or `/api/card` PNG

@@ -393,7 +393,7 @@ Capture exits with `0` only when a raw image was written. Text extraction and pr
 
 Use `--presentation raw`, `--presentation card`, or `--presentation both` to control output image generation. Use `--style-seed <number>` to reproduce a randomized card style exactly. Use `--detail high|low|auto|original` for the Codex `localImage` detail hint stored in metadata.
 
-`--target region` opens an interactive selector (Flameshot when available, ImageMagick `import` drag-select on X11): drag a rectangle and the shot is taken the moment you release. Add `--clipboard` to copy the finished card straight to the clipboard (wl-copy on Wayland, xclip on X11). Clipboard copy is not supported on Windows yet; the flag records a warning and the capture still succeeds. Region capture needs a human at the desk; it is not for headless agents. Region select itself is also not yet supported on Windows: use Win+Shift+S, save the file, then `cloche polish <file>`.
+`--target region` opens an interactive selector (Flameshot when available, ImageMagick `import` drag-select on X11): drag a rectangle and the shot is taken the moment you release. Add `--clipboard` to copy the finished card straight to the clipboard (wl-copy on Wayland, a detached Cloche arboard server on X11). X11 clipboard copy waits up to 3 seconds for ownership and rejects input PNG files above 15 MiB. Clipboard copy is not supported on Windows yet. The flag records a warning and the capture still succeeds. Region capture needs a human at the desk. It is not for headless agents. Region select itself is also not yet supported on Windows: use Win+Shift+S, save the file, then `cloche polish <file>`.
 
 ## Hotkey Workflow
 

@@ -55,6 +55,12 @@ pub enum Command {
     Mcp(crate::mcp::McpArgs),
     Setup(crate::setup::SetupArgs),
     Studio(crate::studio::StudioArgs),
+    #[cfg(target_os = "linux")]
+    #[command(hide = true)]
+    ClipboardServe {
+        #[arg(value_name = "PNG_PATH")]
+        png_path: PathBuf,
+    },
 }
 
 /// Style an existing image into a Cloche presentation card: rounded window,
@@ -1431,6 +1437,25 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<(), serde_json::Error> {
 mod tests {
     use super::*;
     use crate::contract::TextInfo;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn clipboard_serve_subcommand_parses() {
+        let cli = Cli::try_parse_from(["cloche", "clipboard-serve", "/tmp/card with spaces.png"])
+            .expect("internal clipboard server command must parse");
+        assert!(matches!(cli.command, Command::ClipboardServe { png_path }
+            if png_path == Path::new("/tmp/card with spaces.png")));
+        assert!(Cli::try_parse_from(["cloche", "clipboard-serve"]).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn clipboard_serve_subcommand_is_hidden_from_help() {
+        use clap::CommandFactory;
+
+        let help = Cli::command().render_long_help().to_string();
+        assert!(!help.contains("clipboard-serve"));
+    }
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir =
