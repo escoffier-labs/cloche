@@ -10,9 +10,8 @@ All notable changes to this project are documented here. The format follows
 - `capture --clipboard` now works on Windows: the PNG is decoded to RGBA and
   written with arboard in-process. Failures remain warnings. `arboard` is now a
   Linux and Windows dependency (same `image-data` feature only).
-
 - **MCP image content.** The `capture`, `polish`, and `latest` MCP tools now
-  append an `image` content block (base64 PNG) with the presentation card after
+  append an `image` content block (base64, MIME type from the file's signature) with the presentation card after
   the JSON `text` block, so agents in a sandbox or on another machine can see the
   result without access to the file path. New optional arguments:
   `includeImage` (default `true`) and `imageVariant` (`card` or `raw`). Files
