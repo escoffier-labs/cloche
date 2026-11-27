@@ -70,6 +70,10 @@ All notable changes to this project are documented here. The format follows
   4% backdrop by width, so whole cards are indistinguishable as swatches.
 
 ### Changed
+- **BREAKING: capture JSON field `outputDir` is now `outDir`**, matching the
+  flat `--out-dir` and gallery semantics (it is not a per-shot folder). Scripts
+  that read `outputDir` from `capture` output must switch to `outDir`. Reading
+  old on-disk `*.json` sidecars still accepts the legacy `outputDir` key.
 - **Backdrop selection scores palette names against the seed instead of
   indexing by position.** Indexing made the pool length the modulus, so adding
   one palette reshuffled what every existing seed rendered. Scoring by name
@@ -131,9 +135,6 @@ All notable changes to this project are documented here. The format follows
   swatches. Connections are handled per thread with read and write deadlines.
   Idle tabs no longer re-render the hero image every few seconds, and a client
   disconnecting mid-response no longer logs an error.
-- Capture JSON renames `outputDir` to `outDir` to match flat `--out-dir` /
-  gallery semantics (not a per-shot folder). Deserialization still accepts the
-  legacy `outputDir` key so existing on-disk `*.json` sidecars load.
 - Relicensed from Apache-2.0 to MIT. `LICENSE`, `Cargo.toml`, `CONTRIBUTING.md`,
   and the README badge now agree on MIT.
 
