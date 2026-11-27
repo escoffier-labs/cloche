@@ -12,7 +12,7 @@ Cloche is an open-source desktop capture CLI for people and agents: it captures 
 
 ## What needs a conversation first
 
-- **New top-level commands or breaking changes to the JSON contract** (`AppshotResult`, `PolishResult`, `ReelRenderResult`). Agents and scripts depend on stable stdout; open an issue first describing the user story.
+- **New top-level commands or breaking changes to the JSON contract** (`AppshotResult`, `PolishResult`). Agents and scripts depend on stable stdout; open an issue first describing the user story.
 - **New runtime dependencies.** Cloche keeps its dependency tree lean on purpose (every dependency builds with `default-features = false` and an explicit feature list). Adding one needs justification.
 - **Renaming or removing the `appshots` compatibility alias.** It exists for users mid-migration.
 
@@ -42,13 +42,13 @@ cargo run -- doctor --format json
 cargo run -- polish path/to/shot.png --format json
 ```
 
-`cloche doctor --format json` is the fastest way to see which capture backends are available on your machine. The reel engines (`cloche reels render`) need Node tooling: Remotion under `remotion/` (`cd remotion && npm install`) or `npx hyperframes` for the `--engine hyperframes` path.
+`cloche doctor --format json` is the fastest way to see which capture backends are available on your machine.
 
 ## Architecture map
 
 - `src/cli.rs` is the clap command surface and the dispatch for every subcommand.
 - `src/capture/` holds the per-platform capture backends (`linux.rs`, `windows.rs`); `backends` picks one at runtime.
-- `src/polish.rs` renders the presentation card (gradient backdrop, rounded window, shadow) and owns the palette/style-seed system shared by stills and reels.
+- `src/polish.rs` renders the presentation card (gradient backdrop, rounded window, shadow) and owns the palette/style-seed system used by `capture`, `polish`, and `studio`.
 - `src/contract.rs` defines the JSON output types. Change these carefully; they are the public contract.
 - `src/setup/` is the guided `cloche setup` flow (hotkey, agent config, verify).
 - `src/mcp.rs` is the stdio MCP server; it shells out to the same binary so its JSON matches the CLI exactly.

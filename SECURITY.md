@@ -17,7 +17,7 @@ You should get an acknowledgment within 72 hours. If you do not, please follow u
 
 ## In scope
 
-- Code execution or path-traversal flaws in `cloche capture`, `polish`, `reels render`, `gallery`, or `setup`.
+- Code execution or path-traversal flaws in `cloche capture`, `polish`, `gallery`, or `setup`.
 - Output that leaks credentials, tokens, or unexpected on-screen content into a written artifact (`metadata.json`, `text.txt`, a shot card, or an exported HTML gallery).
 - `cloche setup` writing outside the files it documents, or corrupting an agent config it edits without a backup.
 - The `cloche mcp` server mishandling a malformed JSON-RPC request in a way that executes unintended commands.
@@ -32,7 +32,6 @@ Cloche captures whatever is on your display: the active window, a selected windo
 
 - Issues that require an attacker to already have write access to your machine, your desktop session, or your agent config.
 - Behavior of the desktop tools Cloche shells out to (`grim`, `flameshot`, ImageMagick `import`, `xdotool`, `wmctrl`, `wl-copy`). Report those to their respective projects.
-- Bugs in Remotion, HyperFrames, or Node tooling used by `cloche reels render`. Report those upstream.
 - Content you captured and chose to share yourself. Cloche frames what is on your screen; it does not redact it.
 
 ## Disclosure

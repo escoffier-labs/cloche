@@ -129,7 +129,7 @@ const fn terrain(
 
 /// Space palette colors are sampled from astrophotography of the named
 /// objects (emission pinks, reflection blues, dust golds); stops run
-/// dark-to-mid so `design.rs` still reads stop 0 as the canvas base.
+/// dark-to-mid so stop 0 stays the darkest, base color of the card.
 ///
 /// Sky palette colors are sampled the same way, from photographs of the named
 /// conditions: supercell navy over underlit anvil gold, mammatus gray-violet,
@@ -409,10 +409,6 @@ pub struct PresentationStyle {
     pub sky: Option<crate::sky::SkyKind>,
     /// Optional pinned terrain kind; `None` lets the seed pick at random.
     pub terrain: Option<crate::terrain::TerrainKind>,
-}
-
-pub fn random_style() -> PresentationStyle {
-    style_from_seed(random_seed())
 }
 
 /// All scene names accepted by `--scene` / [`scene_from_name`], in menu order.

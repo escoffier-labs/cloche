@@ -105,31 +105,6 @@ cloche polish /tmp/diff.png --scene jwst --style-seed 12345
 
 See [Space backdrops](#space-backdrops) for the full list of looks.
 
-Render an existing short recording through the experimental Remotion reel engine:
-
-```bash
-cd remotion && npm install && cd ..
-cloche reels render \
-  --input raw.mp4 \
-  --out demo.mp4 \
-  --cues cues.json \
-  --title "Create a project"
-```
-
-The cue file follows the AppReels timeline shape:
-
-```json
-{
-  "titleCard": { "text": "Create a project", "ms": 900 },
-  "captions": [{ "startMs": 1000, "endMs": 2600, "text": "Open the project menu" }],
-  "zooms": [{ "startMs": 1200, "endMs": 2400, "scale": 1.35, "x": 0.3, "y": 0.4 }],
-  "outroCard": { "text": "Done", "ms": 700 }
-}
-```
-
-Zooms ease in and out on their own; `x`/`y` (0 to 1 across the footage,
-optional) pick the focus point, defaulting to center.
-
 Preview the latest capture:
 
 ```bash
@@ -318,9 +293,6 @@ cloche capture --target region --presentation both --clipboard --out-dir /tmp/cl
 cloche capture --target active --palette orion-emission --scene jwst --out-dir /tmp/cloche-demo
 cloche polish /tmp/diff.png --format json
 cloche polish /tmp/diff.png --out /tmp/diff-card.png --palette ember-glow --scene jwst --style-seed 12345
-cloche reels render --input raw.mp4 --out demo.mp4 --cues cues.json --title "Create a project"
-cloche reels render --engine hyperframes --input raw.mp4 --out demo.mp4 --cues cues.json \
-  --palette ember-glow --style-seed 12345 --fps 60 --width 1080 --height 1920 --workers 1
 cloche config show
 cloche config options
 cloche config set --mode pinned --palette orion-emission --scene jwst
@@ -337,7 +309,6 @@ cloche preview
 cloche open /tmp/cloche-demo
 cloche schema
 cloche schema --for polish
-cloche schema --for reel-render
 cloche schema --for config
 cloche codex-payload --thread-id THREAD_ID /tmp/cloche-demo
 cloche codex-payload --thread-id THREAD_ID --card /tmp/cloche-demo
@@ -354,15 +325,7 @@ The old `appshots` command remains as an alias for the same code path.
 
 ## Modes
 
-**Shots** are available now. A Shot is a still capture with raw and presentation images, metadata, and optional extracted text.
-
-**Reels** ship an experimental render path today: `cloche reels render` takes an
-existing MP4 plus AppReels-shaped cue JSON and outputs a framed vertical reel
-(`--engine remotion` or `--engine hyperframes`). Desktop `record` capture and
-the rest of the Reels workflow are still planned; see [ROADMAP.md](ROADMAP.md).
-
-**GIF export** is planned after the Reels capture path. GIFs will be generated
-from finished Reels as a delivery format, not recorded as the primary source.
+**Shots** are the product. A Shot is a still capture with raw and presentation images, metadata, and optional extracted text.
 
 ## Why Cloche Exists
 
