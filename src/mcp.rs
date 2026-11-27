@@ -154,13 +154,13 @@ fn tool_definitions() -> Value {
         },
         {
             "name": "polish",
-            "description": "Style an existing image into a Cloche presentation card (rounded window, shadows, gradient backdrop) and return the JSON result.",
+            "description": "Style an existing image into a Cloche presentation card (rounded window, shadows, procedural backdrop) and return the JSON result.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "input": { "type": "string", "description": "Path to the image to style (PNG, JPEG, or WebP)." },
                     "out": { "type": "string", "description": "Output card path; defaults to <input>-card.png next to the input." },
-                    "palette": { "type": "string", "enum": crate::polish::palette_names(), "description": "Backdrop palette (gradient or deep-space scene); random when omitted." },
+                    "palette": { "type": "string", "enum": crate::polish::palette_names(), "description": "Backdrop palette (gradient, space, pattern, sky, or terrain); a random space palette when omitted." },
                     "scene": { "type": "string", "enum": crate::polish::scene_names(), "description": "Pin the deep-space scene look (jwst, alma, cmb, etc.); random when omitted. Only applies to space palettes." },
                     "motif": { "type": "string", "enum": crate::polish::motif_names(), "description": "Pin the geometric motif (plaid, stripe, grid, etc.); random when omitted. Only applies to pattern palettes." },
                     "sky": { "type": "string", "enum": crate::polish::sky_names(), "description": "Pin the sky condition (bolt, mammatus, aurora, etc.); random when omitted. Only applies to sky palettes." },

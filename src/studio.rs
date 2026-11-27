@@ -7,8 +7,10 @@
 //! address as the security boundary.
 //!
 //! The HTTP handling here is deliberately small and hand-rolled rather than a
-//! dependency. It serves one page, four JSON/PNG endpoints, and one client at a
-//! time; anything more would be the wrong shape for a local picker.
+//! dependency. It serves one page and four JSON/PNG endpoints, and handles each
+//! connection on its own thread because the page requests dozens of swatches at
+//! once. There is no keep-alive, TLS, or routing beyond that; anything more
+//! would be the wrong shape for a local picker.
 
 use std::io::BufRead;
 use std::io::BufReader;

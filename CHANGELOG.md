@@ -7,61 +7,83 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- `capture --clipboard` now works on Windows: the PNG is decoded to RGBA and
-  written with arboard in-process. Failures remain warnings. `arboard` is now a
-  Linux and Windows dependency (same `image-data` feature only).
-- **MCP image content.** The `capture`, `polish`, and `latest` MCP tools now
-  append an `image` content block (base64, MIME type from the file's signature) with the presentation card after
-  the JSON `text` block, so agents in a sandbox or on another machine can see the
-  result without access to the file path. New optional arguments:
-  `includeImage` (default `true`) and `imageVariant` (`card` or `raw`). Files
-  over 2 MiB, missing files, and unreadable files produce a text note instead of
-  an image and never fail the call. The base64 encoder moved from `html.rs` to
-  `util.rs`; no new dependencies.
-- `cloche codex-payload --card` attaches the polished presentation image instead
-  of the default raw capture frame.
+- **Five backdrop families.** Cards used to choose between gradients and
+  deep-space scenes. They now come from gradient, space, pattern, sky, or
+  terrain, each drawn from the style seed at render time with no stored images.
+  `cloche config options` prints the live catalog: every palette with its kind,
+  plus every scene, motif, sky, and terrain.
+- **Pattern backdrops**: woven and ruled geometry. Six palettes (`tartan-moss`,
+  `oxford-navy`, `blueprint`, `ledger-cream`, `picnic-red`, `workshop-ochre`)
+  and twelve motifs (`plaid`, `gingham`, `stripe`, `rule`, `grid`, `diagonal`,
+  `chevron`, `dot`, `crosshatch`, `weave`, `herringbone`, `houndstooth`) via a
+  new `--motif`. Nothing is a tiled bitmap: plaid builds a mirrored tartan
+  sett, houndstooth comes off a 2/2 twill.
+- **Sky backdrops**: cloud decks, storms, lightning, twilight, and aurora. Seven
+  palettes (`blue-hour`, `golden-hour`, `supercell`, `mammatus`,
+  `aurora-curtain`, `cirrus-blue`, `alpenglow`) and ten conditions (`blue-hour`,
+  `golden-hour`, `overcast`, `cirrus`, `mackerel`, `mammatus`, `storm`, `bolt`,
+  `crepuscular`, `aurora`) via a new `--sky`.
+- **Terrain backdrops**: dunes, mesa, badlands, and glacier, each a sky above a
+  horizon with ground below. Four palettes and four kinds share those names, and
+  `--terrain` pins the kind.
+- **Eight more space and gradient palettes.** Four deep-space (`eagle-pillars`,
+  `crab-remnant`, `tarantula-web`, `sombrero-dust`), bringing the default random
+  rotation to twelve, and four gradients (`sea-glass`, `peach-dusk`, `ink-wash`,
+  `citrus-noon`).
+- **`--palette`, `--scene`, `--motif`, `--sky`, and `--terrain` on both
+  `cloche capture` and `cloche polish`** (0.7.0 `polish` had only `--palette`
+  and `--scene`), plus the same arguments on both MCP tools. Explicit flags override the persisted config.
 - **Persisted backdrop preferences.** `cloche config` stores styling choices in
   `~/.config/cloche/config.json` (`$XDG_CONFIG_HOME` / `%APPDATA%` honored,
   `CLOCHE_CONFIG` overrides), and both `cloche capture` and `cloche polish` read
-  them with no flags. Pin a palette and scene with
+  them with no flags. Pin a look with
   `cloche config set --mode pinned --palette orion-emission --scene jwst`, or
   keep the picker random over a chosen subset with
   `cloche config set --palettes carina-hubble,pleiades-reflection --scenes alma,veil`.
-  `cloche config options` lists every palette (with its gradient/space kind) and
-  scene; `cloche config show` prints the effective preferences.
-- **`cloche capture --palette` and `--scene`**, matching the flags `polish`
-  already had, plus the same two arguments on the MCP `capture` tool. Explicit
-  flags override the persisted config.
-- **`cloche schema --for config`** emits the JSON contract for the new command.
+  The config holds a pinned value and a random pool for each of palette, scene,
+  motif, sky, and terrain. `cloche config show` prints the effective
+  preferences, and `cloche schema --for config` emits the JSON contract.
 - **`cloche studio`**, a local page for picking backdrops by eye instead of by
-  name. Every palette and scene is shown as a real render, clicking toggles a
-  backdrop in or out of the random pool (or pins it), and every change is
-  written to the same `config.json` the CLI reads. Binds to `127.0.0.1` with no
-  auth by design; `--host` widens it, `--port 0` takes any free port, and
-  `--print-url` prints the URL as JSON without serving. No new dependencies: the
-  HTTP handling is hand-rolled on `std::net`.
-- **Pattern backdrops**, a third family alongside the gradients and the space
-  scenes: woven and ruled geometry drawn from the seed. Six palettes
-  (`tartan-moss`, `oxford-navy`, `blueprint`, `ledger-cream`, `picnic-red`,
-  `workshop-ochre`) and twelve motifs (`plaid`, `gingham`, `stripe`, `rule`,
-  `grid`, `diagonal`, `chevron`, `dot`, `crosshatch`, `weave`, `herringbone`,
-  `houndstooth`) via a new `--motif` on `capture`, `polish`, and both MCP tools,
-  plus `motif` and `motifs` in the config. Nothing is a tiled bitmap: plaid
-  builds a mirrored tartan sett, houndstooth comes off a 2/2 twill.
-- **Ten more palettes.** Four deep-space (`eagle-pillars`, `crab-remnant`,
-  `tarantula-web`, `sombrero-dust`), bringing the default random rotation to
-  twelve, and four gradients (`sea-glass`, `peach-dusk`, `ink-wash`,
-  `citrus-noon`). With the two axes that is 273 backdrops before the seed varies
-  anything.
-- **The studio shows the cross product.** Hovering a backdrop redraws the scene
-  or motif sheet on it, so the 192 space combinations and 72 pattern
-  combinations are browsable instead of implied by two flat lists.
+  name. Space, gradient, and pattern palettes and every scene and motif are
+  shown as real renders. Clicking toggles a backdrop in or out of the random pool
+  (or pins it), and hovering one redraws the scene or motif sheet on it. Every
+  change is written to the same `config.json` the CLI reads. Binds to
+  `127.0.0.1` with no auth by design. `--host` widens it, `--port 0` takes any
+  free port, and `--print-url` prints the URL as JSON without serving. Sky and
+  terrain are not on the page yet. No new dependencies: the HTTP handling is
+  hand-rolled on `std::net`.
+- **`capture --clipboard` on Windows.** The PNG is decoded to RGBA and written
+  with arboard in-process. Failures remain warnings. `arboard` is now a Linux
+  and Windows dependency (same `image-data` feature only).
+- **MCP image content.** The `capture`, `polish`, and `latest` MCP tools now
+  append an `image` content block (base64, MIME type from the file's signature)
+  with the presentation card after the JSON `text` block, so agents in a sandbox
+  or on another machine can see the result without access to the file path. New
+  optional arguments: `includeImage` (default `true`) and `imageVariant` (`card`
+  or `raw`). Files over 2 MiB, missing files, and unreadable files produce a
+  text note instead of an image and never fail the call. The base64 encoder
+  moved from `html.rs` to `util.rs`, with no new dependencies.
+- `cloche codex-payload --card` attaches the polished presentation image instead
+  of the default raw capture frame.
 - **`polish::render_backdrop`** paints a backdrop at any size with no card on
-  top. A finished card is only about 4% backdrop by width, so whole cards are
-  indistinguishable from each other as swatches; the picker needs the sky on its
-  own.
+  top, so the studio can show the sky on its own. A finished card is only about
+  4% backdrop by width, so whole cards are indistinguishable as swatches.
 
 ### Changed
+- **BREAKING: capture JSON field `outputDir` is now `outDir`**, matching the
+  flat `--out-dir` and gallery semantics (it is not a per-shot folder). Scripts
+  that read `outputDir` from `capture` output must switch to `outDir`. Reading
+  old on-disk `*.json` sidecars still accepts the legacy `outputDir` key.
+- **Backdrop selection scores palette names against the seed instead of
+  indexing by position.** Indexing made the pool length the modulus, so adding
+  one palette reshuffled what every existing seed rendered. Scoring by name
+  means a new palette only takes the seeds it actually wins, so the table is
+  safe to grow. This is a one-time break: a given `--style-seed`
+  renders a different backdrop than it did in 0.7.0. Reproducibility holds from
+  here on, and the same seed with the same pool is still exact.
+- Random styling still defaults to the space palettes only. A palette listed in
+  the config pool is drawn from regardless of its kind, which is how the
+  gradient, pattern, sky, and terrain families join the rotation.
 - **Polished cards are about 27% smaller on disk, with identical pixels.** Card
   PNGs were written with `image`'s default `Fast` compression and an alpha
   channel the opaque card never uses. They now use zlib level 6 with adaptive
@@ -69,18 +91,16 @@ All notable changes to this project are documented here. The format follows
   47.2 MB to 34.2 MB (median 261 KB to 189 KB, p90 1.20 MB to 0.95 MB). Polish
   takes about 30 ms longer at the median (about 200 ms longer on the largest
   cards). Decoded cards match the previous output exactly.
-- **Backdrop selection now scores palette names against the seed instead of
-  indexing by position.** Indexing made the pool length the modulus, so adding
-  one palette reshuffled what every existing seed rendered. Scoring by name
-  means a new palette only takes the seeds it actually wins, which is what makes
-  the table safe to grow. This is a one-time break: a given `--style-seed`
-  renders a different backdrop than it did in 0.7.0. Reproducibility holds from
-  here on, and the same seed with the same pool is still exact.
-- A named random pool can reach the gradient palettes again. Random styling
-  still defaults to space palettes only, but a palette listed in the config pool
-  is drawn from regardless of its kind.
+- Card padding is tighter (58 to 78 px at reference size, down from 100 to 132),
+  so the screenshot fills more of the card and the backdrop reads as a frame.
 - An unreadable or malformed config is reported in the result's `warnings` and
   falls back to defaults instead of failing the capture.
+- MCP `capture` input schema lists `format` (always `json`), an empty `required`
+  array, and describes `outDir` as the flat gallery root.
+- The CLI's help text and MCP descriptions name all five backdrop families, and
+  the README points at `cloche config options` instead of a hand-counted total.
+- Internal: `cli.rs` is split into one handler module per command family under
+  `src/commands/`. No behavior change.
 
 ### Removed
 - **BREAKING: Reels.** `cloche reels render` (with `--engine remotion` and
@@ -100,28 +120,23 @@ All notable changes to this project are documented here. The format follows
   pipe confirms ownership within 3 seconds or reports a capture warning. The
   child rejects input PNG files above 15 MiB, exits on X connection loss via a
   30-second watchdog, and closes inherited output pipes and wrapper lock fds.
+- `capture --target active` on X11 no longer requires xdotool. The
+  gnome-screenshot and scrot fallbacks are reachable without it, and
+  `cloche doctor` reports only helpers that capture can actually invoke.
+- Two captures in the same second no longer overwrite each other. The capture
+  stem now includes the process id and a per-process counter.
+- `gallery` and `latest` find flat `<stem>.json` sidecars one directory deep, and
+  overlapping `--root` values no longer list the same capture twice.
+- `codex-payload` accepts a flat-layout out-dir, so the README quickstart works
+  with the default output. It picks the newest sidecar, legacy `metadata.json`
+  included.
 - `cloche studio` served one connection at a time, so a browser pre-opening a
   socket without sending a request wedged the accept loop and the page loaded no
   swatches. Connections are handled per thread with read and write deadlines.
+  Idle tabs no longer re-render the hero image every few seconds, and a client
+  disconnecting mid-response no longer logs an error.
 - Relicensed from Apache-2.0 to MIT. `LICENSE`, `Cargo.toml`, `CONTRIBUTING.md`,
   and the README badge now agree on MIT.
-- Capture JSON renames `outputDir` to `outDir` to match flat `--out-dir` /
-  gallery semantics (not a per-shot folder). Deserialization still accepts the
-  legacy `outputDir` key so existing on-disk `*.json` sidecars load.
-
-### Docs
-- README/ROADMAP drift sweep: Modes and roadmap now treat `cloche reels render`
-  as shipped (experimental) with `record` still planned; Output Files documents
-  the flat `~/Pictures/Cloche` layout; Command Reference covers `--detail`,
-  `--window-id`, `--app`, and reels render flags; Linux notes that
-  `list-windows` hard-fails without `wmctrl`; `--clipboard` notes the Windows
-  gap. CHANGELOG compare links catch up through 0.7.0.
-- Agent Use documents that `codex-payload` defaults to the raw frame and that
-  `image.path` is not the polished card.
-- Command Reference documents `cloche schema --for reel-render`.
-- MCP `capture` input schema lists `format` (always `json`), an empty
-  `required` array, and clarifies `outDir` as the flat gallery root.
-
 
 ## [0.7.0] - 2026-07-18
 

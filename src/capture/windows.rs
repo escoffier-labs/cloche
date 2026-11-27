@@ -1,6 +1,5 @@
 #![cfg(target_os = "windows")]
 
-use std::path::Path;
 use std::process::Command;
 
 use serde::Deserialize;
@@ -491,6 +490,3 @@ fn temporary_script_path() -> std::path::PathBuf {
         .unwrap_or_default();
     std::env::temp_dir().join(format!("cloche-{stamp}.ps1"))
 }
-
-#[allow(dead_code)]
-fn _assert_path_is_used(_: &Path) {}
