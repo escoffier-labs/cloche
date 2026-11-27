@@ -45,7 +45,7 @@ fn render_card(item: &GalleryItem) -> String {
         Some(path) => match std::fs::read(path) {
             Ok(bytes) => format!(
                 "<img src=\"data:image/png;base64,{}\" alt=\"{}\" loading=\"lazy\">",
-                base64_encode(&bytes),
+                crate::util::base64_encode(&bytes),
                 escape_html(&item.title),
             ),
             Err(_) => "<div class=\"missing\">image unavailable</div>".to_string(),
@@ -93,31 +93,6 @@ figcaption{padding:12px 14px;display:flex;flex-direction:column;gap:2px}\
 .path{color:#6e7681;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}\
 .empty{padding:32px;color:#8b949e}";
 
-/// Standard base64 (RFC 4648) with padding.
-pub fn base64_encode(input: &[u8]) -> String {
-    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
-    for chunk in input.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
-        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        out.push(TABLE[((n >> 18) & 63) as usize] as char);
-        out.push(TABLE[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 {
-            TABLE[((n >> 6) & 63) as usize] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            TABLE[(n & 63) as usize] as char
-        } else {
-            '='
-        });
-    }
-    out
-}
-
 /// Escape text for safe inclusion in HTML element content and attributes.
 pub fn escape_html(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -137,18 +112,6 @@ pub fn escape_html(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn base64_matches_rfc4648_vectors() {
-        assert_eq!(base64_encode(b""), "");
-        assert_eq!(base64_encode(b"f"), "Zg==");
-        assert_eq!(base64_encode(b"fo"), "Zm8=");
-        assert_eq!(base64_encode(b"foo"), "Zm9v");
-        assert_eq!(base64_encode(b"foob"), "Zm9vYg==");
-        assert_eq!(base64_encode(b"fooba"), "Zm9vYmE=");
-        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
-        assert_eq!(base64_encode(b"Man"), "TWFu");
-    }
 
     #[test]
     fn escapes_html_metacharacters() {

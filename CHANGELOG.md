@@ -10,6 +10,15 @@ All notable changes to this project are documented here. The format follows
 - `capture --clipboard` now works on Windows: the PNG is decoded to RGBA and
   written with arboard in-process. Failures remain warnings. `arboard` is now a
   Linux and Windows dependency (same `image-data` feature only).
+
+- **MCP image content.** The `capture`, `polish`, and `latest` MCP tools now
+  append an `image` content block (base64 PNG) with the presentation card after
+  the JSON `text` block, so agents in a sandbox or on another machine can see the
+  result without access to the file path. New optional arguments:
+  `includeImage` (default `true`) and `imageVariant` (`card` or `raw`). Files
+  over 2 MiB, missing files, and unreadable files produce a text note instead of
+  an image and never fail the call. The base64 encoder moved from `html.rs` to
+  `util.rs`; no new dependencies.
 - `cloche codex-payload --card` attaches the polished presentation image instead
   of the default raw capture frame.
 - **Persisted backdrop preferences.** `cloche config` stores styling choices in

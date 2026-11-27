@@ -17,10 +17,31 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Debug, Args)]
 pub struct McpArgs {}
 
+/// Largest image file (raw bytes) the server will inline as an MCP `image`
+/// block. Base64 inflates by a third, so 2 MiB becomes roughly 2.8 MB of JSON on
+/// one stdio line. Cards and screenshots in the usual size range fit under it,
+/// while a full-resolution multi-monitor frame would not, and agent clients tend
+/// to truncate or reject multi-megabyte tool results. Over the cap the server
+/// returns a text note instead; the file path in the JSON stays valid.
+const MAX_INLINE_IMAGE_BYTES: u64 = 2 * 1024 * 1024;
+
 /// The result of executing one tool.
 pub struct ToolRun {
     pub text: String,
     pub is_error: bool,
+    /// Further MCP content blocks (an `image` block or a text note), appended
+    /// after the leading `text` block, which always holds the CLI JSON verbatim.
+    pub extra_content: Vec<Value>,
+}
+
+impl ToolRun {
+    fn new(text: String, is_error: bool) -> Self {
+        Self {
+            text,
+            is_error,
+            extra_content: Vec::new(),
+        }
+    }
 }
 
 pub fn run(_args: McpArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
@@ -77,13 +98,9 @@ pub fn dispatch(
                 error_response(id, -32602, &format!("unknown tool: {name}"))
             } else {
                 let run = run_tool(name, &arguments);
-                result_response(
-                    id,
-                    json!({
-                        "content": [{ "type": "text", "text": run.text }],
-                        "isError": run.is_error
-                    }),
-                )
+                let mut content = vec![json!({ "type": "text", "text": run.text })];
+                content.extend(run.extra_content);
+                result_response(id, json!({ "content": content, "isError": run.is_error }))
             }
         }
         _ => error_response(id, -32601, &format!("method not found: {method}")),
@@ -128,7 +145,9 @@ fn tool_definitions() -> Value {
                     "terrain": { "type": "string", "enum": crate::polish::terrain_names(), "description": "Pin the terrain kind (dunes, mesa, badlands, glacier). Only applies to terrain palettes." },
                     "styleSeed": { "type": "integer" },
                     "clipboard": { "type": "boolean", "description": "Copy the card to the system clipboard after capture." },
-                    "format": { "type": "string", "enum": ["json"], "default": "json", "description": "Output format. The MCP wrapper always passes --format json." }
+                    "format": { "type": "string", "enum": ["json"], "default": "json", "description": "Output format. The MCP wrapper always passes --format json." },
+                    "includeImage": { "type": "boolean", "default": true, "description": "Also return the image as an MCP image content block (base64), so clients that cannot open the file path still see it. Skipped with a text note when the file is over 2 MiB. Not passed to the CLI." },
+                    "imageVariant": { "type": "string", "enum": ["card", "raw"], "default": "card", "description": "Which image to attach: the presentation card, or the raw frame. Falls back to the other when the preferred one is not in the result. Not passed to the CLI." }
                 },
                 "required": []
             }
@@ -146,7 +165,9 @@ fn tool_definitions() -> Value {
                     "motif": { "type": "string", "enum": crate::polish::motif_names(), "description": "Pin the geometric motif (plaid, stripe, grid, etc.); random when omitted. Only applies to pattern palettes." },
                     "sky": { "type": "string", "enum": crate::polish::sky_names(), "description": "Pin the sky condition (bolt, mammatus, aurora, etc.); random when omitted. Only applies to sky palettes." },
                     "terrain": { "type": "string", "enum": crate::polish::terrain_names(), "description": "Pin the terrain kind (dunes, mesa, badlands, glacier); random when omitted. Only applies to terrain palettes." },
-                    "styleSeed": { "type": "integer", "description": "Seed for deterministic styling." }
+                    "styleSeed": { "type": "integer", "description": "Seed for deterministic styling." },
+                    "includeImage": { "type": "boolean", "default": true, "description": "Also return the image as an MCP image content block (base64), so clients that cannot open the file path still see it. Skipped with a text note when the file is over 2 MiB. Not passed to the CLI." },
+                    "imageVariant": { "type": "string", "enum": ["card", "raw"], "default": "card", "description": "Which image to attach: the presentation card, or the raw frame. Falls back to the other when the preferred one is not in the result. Not passed to the CLI." }
                 },
                 "required": ["input"]
             }
@@ -164,7 +185,13 @@ fn tool_definitions() -> Value {
         {
             "name": "latest",
             "description": "Return the most recent capture summary as JSON.",
-            "inputSchema": { "type": "object", "properties": {} }
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "includeImage": { "type": "boolean", "default": true, "description": "Also return the image as an MCP image content block (base64), so clients that cannot open the file path still see it. Skipped with a text note when the file is over 2 MiB. Not passed to the CLI." },
+                    "imageVariant": { "type": "string", "enum": ["card", "raw"], "default": "card", "description": "Which image to attach: the presentation card, or the raw frame. Falls back to the other when the preferred one is not in the result. Not passed to the CLI." }
+                }
+            }
         },
         {
             "name": "gallery",
@@ -326,19 +353,13 @@ fn run_tool_via_subprocess(name: &str, arguments: &Value) -> ToolRun {
     let args = match tool_command_args(name, arguments) {
         Ok(args) => args,
         Err(message) => {
-            return ToolRun {
-                text: message,
-                is_error: true,
-            };
+            return ToolRun::new(message, true);
         }
     };
     let exe = match std::env::current_exe() {
         Ok(exe) => exe,
         Err(err) => {
-            return ToolRun {
-                text: format!("failed to locate Cloche binary: {err}"),
-                is_error: true,
-            };
+            return ToolRun::new(format!("failed to locate Cloche binary: {err}"), true);
         }
     };
     match std::process::Command::new(exe).args(&args).output() {
@@ -350,15 +371,95 @@ fn run_tool_via_subprocess(name: &str, arguments: &Value) -> ToolRun {
                 let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
                 if stdout.is_empty() { stderr } else { stdout }
             };
-            ToolRun {
-                text,
-                is_error: !output.status.success(),
+            let is_error = !output.status.success();
+            let mut run = ToolRun::new(text, is_error);
+            if !is_error {
+                run.extra_content =
+                    image_content(name, arguments, &run.text, MAX_INLINE_IMAGE_BYTES);
             }
+            run
         }
-        Err(err) => ToolRun {
-            text: format!("failed to run capture: {err}"),
-            is_error: true,
-        },
+        Err(err) => ToolRun::new(format!("failed to run capture: {err}"), true),
+    }
+}
+
+/// Which image variant a tool call asked for.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ImageVariant {
+    Card,
+    Raw,
+}
+
+/// Build the extra content blocks for a successful image-producing tool call:
+/// one `image` block, or a short text note when the image cannot be attached.
+///
+/// This runs after the subprocess returns and only reads the file path the CLI
+/// JSON named, so the CLI stays the source of truth. Image problems never fail
+/// the tool call; they become a note.
+fn image_content(name: &str, arguments: &Value, cli_json: &str, max_bytes: u64) -> Vec<Value> {
+    if !matches!(name, "capture" | "polish" | "latest") {
+        return Vec::new();
+    }
+    if arguments.get("includeImage").and_then(Value::as_bool) == Some(false) {
+        return Vec::new();
+    }
+    let variant = match arguments.get("imageVariant").and_then(Value::as_str) {
+        Some("raw") => ImageVariant::Raw,
+        _ => ImageVariant::Card,
+    };
+    let Ok(result) = serde_json::from_str::<Value>(cli_json) else {
+        return Vec::new();
+    };
+    let Some((path, mime)) = pick_image(name, &result, variant) else {
+        return Vec::new();
+    };
+    let note = |reason: String| {
+        vec![json!({ "type": "text", "text": format!("Image not attached: {reason}") })]
+    };
+    let size = match std::fs::metadata(&path) {
+        Ok(metadata) => metadata.len(),
+        Err(err) => return note(format!("could not read {path}: {err}")),
+    };
+    if size > max_bytes {
+        return note(format!(
+            "{path} is {size} bytes, over the {max_bytes} byte inline limit; open the file path instead"
+        ));
+    }
+    match std::fs::read(&path) {
+        Ok(bytes) => vec![json!({
+            "type": "image",
+            "data": crate::util::base64_encode(&bytes),
+            "mimeType": mime
+        })],
+        Err(err) => note(format!("could not read {path}: {err}")),
+    }
+}
+
+/// Find the path and MIME type of the image to attach in a CLI JSON result.
+/// Prefers the requested variant and falls back to the other one.
+fn pick_image(name: &str, result: &Value, variant: ImageVariant) -> Option<(String, String)> {
+    // `latest` nests the summary under `capture`; `polish` calls its input the
+    // raw frame and its output the card.
+    let (raw_key, card_key, root) = match name {
+        "capture" => ("image", "presentationImage", result),
+        "latest" => ("image", "presentationImage", result.get("capture")?),
+        "polish" => ("input", "card", result),
+        _ => return None,
+    };
+    let image_at = |key: &str| {
+        let info = root.get(key)?;
+        let path = info.get("path")?.as_str()?.to_string();
+        let mime = info
+            .get("mime")
+            .and_then(Value::as_str)
+            .filter(|mime| mime.starts_with("image/"))
+            .unwrap_or("image/png")
+            .to_string();
+        Some((path, mime))
+    };
+    match variant {
+        ImageVariant::Card => image_at(card_key).or_else(|| image_at(raw_key)),
+        ImageVariant::Raw => image_at(raw_key).or_else(|| image_at(card_key)),
     }
 }
 
@@ -418,10 +519,7 @@ mod tests {
         });
         let mut runner = |name: &str, _args: &Value| {
             assert_eq!(name, "doctor");
-            ToolRun {
-                text: "{\"ok\":true}".to_string(),
-                is_error: false,
-            }
+            ToolRun::new("{\"ok\":true}".to_string(), false)
         };
         let response = dispatch(&request, &mut runner).expect("response");
         assert_eq!(response["result"]["isError"], false);
@@ -645,5 +743,235 @@ mod tests {
             !polish_desc.contains("slot-canyon"),
             "polish description still mentions slot-canyon"
         );
+    }
+
+    /// A 1x1 PNG: signature plus IHDR/IDAT/IEND, enough bytes to round-trip.
+    const TINY_PNG: &[u8] = &[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f,
+        0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8,
+        0xff, 0xff, 0x3f, 0x00, 0x05, 0xfe, 0x02, 0xfe, 0xa7, 0x35, 0x81, 0x84, 0x00, 0x00, 0x00,
+        0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ];
+
+    fn image_temp_dir(label: &str) -> std::path::PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("cloche-mcp-test-{}-{label}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        dir
+    }
+
+    fn capture_json(raw: &std::path::Path, card: &std::path::Path) -> String {
+        json!({
+            "ok": true,
+            "image": { "path": raw, "mime": "image/png" },
+            "presentationImage": { "path": card, "mime": "image/png" }
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn dispatch_appends_extra_content_after_text() {
+        let request = json!({
+            "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+            "params": { "name": "capture", "arguments": {} }
+        });
+        let mut runner = |_name: &str, _args: &Value| {
+            let mut run = ToolRun::new("{\"ok\":true}".to_string(), false);
+            run.extra_content =
+                vec![json!({ "type": "image", "data": "AAAA", "mimeType": "image/png" })];
+            run
+        };
+        let response = dispatch(&request, &mut runner).expect("response");
+        let content = response["result"]["content"].as_array().expect("content");
+        assert_eq!(content.len(), 2);
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[1]["type"], "image");
+        assert_eq!(content[1]["mimeType"], "image/png");
+    }
+
+    #[test]
+    fn dispatch_without_extra_content_is_text_only() {
+        let request = json!({
+            "jsonrpc": "2.0", "id": 8, "method": "tools/call",
+            "params": { "name": "doctor", "arguments": {} }
+        });
+        let mut runner = |_name: &str, _args: &Value| ToolRun::new("{}".to_string(), false);
+        let response = dispatch(&request, &mut runner).expect("response");
+        assert_eq!(
+            response["result"]["content"]
+                .as_array()
+                .expect("content")
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn capture_attaches_card_image_by_default() {
+        let dir = image_temp_dir("card-default");
+        let raw = dir.join("raw.png");
+        let card = dir.join("card.png");
+        std::fs::write(&raw, b"raw bytes").expect("raw");
+        std::fs::write(&card, TINY_PNG).expect("card");
+        let blocks = image_content("capture", &json!({}), &capture_json(&raw, &card), 1024);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0]["type"], "image");
+        assert_eq!(blocks[0]["mimeType"], "image/png");
+        assert_eq!(blocks[0]["data"], crate::util::base64_encode(TINY_PNG));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn raw_variant_attaches_raw_image() {
+        let dir = image_temp_dir("raw-variant");
+        let raw = dir.join("raw.png");
+        let card = dir.join("card.png");
+        std::fs::write(&raw, b"raw bytes").expect("raw");
+        std::fs::write(&card, TINY_PNG).expect("card");
+        let blocks = image_content(
+            "capture",
+            &json!({ "imageVariant": "raw" }),
+            &capture_json(&raw, &card),
+            1024,
+        );
+        assert_eq!(blocks[0]["data"], crate::util::base64_encode(b"raw bytes"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn include_image_false_skips_image() {
+        let dir = image_temp_dir("opt-out");
+        let card = dir.join("card.png");
+        std::fs::write(&card, TINY_PNG).expect("card");
+        let blocks = image_content(
+            "capture",
+            &json!({ "includeImage": false }),
+            &capture_json(&card, &card),
+            1024,
+        );
+        assert!(blocks.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn polish_attaches_card_and_latest_reads_nested_capture() {
+        let dir = image_temp_dir("polish-latest");
+        let card = dir.join("card.png");
+        std::fs::write(&card, TINY_PNG).expect("card");
+        let polish_json = json!({ "ok": true, "card": { "path": &card, "mime": "image/png" } });
+        let blocks = image_content("polish", &json!({}), &polish_json.to_string(), 1024);
+        assert_eq!(blocks[0]["type"], "image");
+        let latest_json = json!({
+            "ok": true,
+            "capture": { "presentationImage": { "path": &card, "mime": "image/png" } }
+        });
+        let blocks = image_content("latest", &json!({}), &latest_json.to_string(), 1024);
+        assert_eq!(blocks[0]["type"], "image");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn falls_back_to_raw_when_no_card_and_keeps_jpeg_mime() {
+        let dir = image_temp_dir("fallback");
+        let raw = dir.join("raw.jpg");
+        std::fs::write(&raw, b"jpeg").expect("raw");
+        let json_text = json!({ "ok": true, "image": { "path": &raw, "mime": "image/jpeg" } });
+        let blocks = image_content("capture", &json!({}), &json_text.to_string(), 1024);
+        assert_eq!(blocks[0]["mimeType"], "image/jpeg");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn oversized_image_becomes_a_text_note() {
+        let dir = image_temp_dir("oversize");
+        let card = dir.join("card.png");
+        std::fs::write(&card, TINY_PNG).expect("card");
+        let blocks = image_content(
+            "capture",
+            &json!({}),
+            &capture_json(&card, &card),
+            (TINY_PNG.len() as u64) - 1,
+        );
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0]["type"], "text");
+        let note = blocks[0]["text"].as_str().expect("note");
+        assert!(note.contains("Image not attached"));
+        assert!(note.contains("inline limit"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn image_at_exactly_the_cap_is_attached() {
+        let dir = image_temp_dir("at-cap");
+        let card = dir.join("card.png");
+        std::fs::write(&card, TINY_PNG).expect("card");
+        let blocks = image_content(
+            "capture",
+            &json!({}),
+            &capture_json(&card, &card),
+            TINY_PNG.len() as u64,
+        );
+        assert_eq!(blocks[0]["type"], "image");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn missing_image_file_becomes_a_text_note() {
+        let dir = image_temp_dir("missing");
+        let gone = dir.join("gone.png");
+        let blocks = image_content("capture", &json!({}), &capture_json(&gone, &gone), 1024);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0]["type"], "text");
+        assert!(
+            blocks[0]["text"]
+                .as_str()
+                .expect("note")
+                .contains("could not read")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn non_image_tools_and_unparseable_json_add_nothing() {
+        assert!(image_content("doctor", &json!({}), "{}", 1024).is_empty());
+        assert!(image_content("capture", &json!({}), "not json", 1024).is_empty());
+        assert!(image_content("capture", &json!({}), "{\"ok\":true}", 1024).is_empty());
+    }
+
+    #[test]
+    fn image_options_are_not_forwarded_to_the_cli() {
+        let args = tool_command_args(
+            "capture",
+            &json!({ "includeImage": false, "imageVariant": "raw" }),
+        )
+        .expect("args");
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg.contains("image") || arg.contains("variant"))
+        );
+    }
+
+    #[test]
+    fn image_tools_document_include_image_and_variant() {
+        let tools = tool_definitions();
+        for name in ["capture", "polish", "latest"] {
+            let tool = tools
+                .as_array()
+                .expect("tools")
+                .iter()
+                .find(|tool| tool["name"] == name)
+                .expect("tool");
+            let properties = &tool["inputSchema"]["properties"];
+            assert_eq!(properties["includeImage"]["type"], "boolean", "{name}");
+            assert_eq!(properties["includeImage"]["default"], true, "{name}");
+            assert_eq!(
+                properties["imageVariant"]["enum"],
+                json!(["card", "raw"]),
+                "{name}"
+            );
+        }
     }
 }
