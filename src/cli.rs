@@ -360,13 +360,13 @@ pub fn dispatch(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
     }
 }
 
-#[cfg(test)]
+// Every test here exercises the Linux-only `clipboard-serve` command.
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use std::path::Path;
 
     use super::*;
 
-    #[cfg(target_os = "linux")]
     #[test]
     fn clipboard_serve_subcommand_parses() {
         let cli = Cli::try_parse_from(["cloche", "clipboard-serve", "/tmp/card with spaces.png"])
@@ -376,7 +376,6 @@ mod tests {
         assert!(Cli::try_parse_from(["cloche", "clipboard-serve"]).is_err());
     }
 
-    #[cfg(target_os = "linux")]
     #[test]
     fn clipboard_serve_subcommand_is_hidden_from_help() {
         use clap::CommandFactory;
