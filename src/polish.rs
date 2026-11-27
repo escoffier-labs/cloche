@@ -773,9 +773,9 @@ fn rounded_window(input: &DynamicImage, radius: u32, rim_width: f32) -> RgbaImag
                     (rim_width + 1.0 - distance).clamp(0.0, 1.0) * coverage
                 };
                 let amount = RIM_STRENGTH * band;
-                for channel in 0..3 {
-                    let value = f32::from(pixel.0[channel]);
-                    pixel.0[channel] = (value + (255.0 - value) * amount).round() as u8;
+                for channel in pixel.0.iter_mut().take(3) {
+                    let value = f32::from(*channel);
+                    *channel = (value + (255.0 - value) * amount).round() as u8;
                 }
             }
         }
