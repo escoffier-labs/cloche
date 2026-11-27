@@ -8,6 +8,7 @@ use crate::cli::CaptureArgs;
 use crate::cli::PresentationMode;
 use crate::config;
 use crate::contract::AppshotResult;
+use crate::contract::CaptureTarget;
 use crate::polish;
 use crate::text;
 use crate::util;
@@ -17,6 +18,7 @@ use super::image_info;
 use super::print_json;
 
 fn postprocess_capture<CopyPng, ExtractText>(
+    target: CaptureTarget,
     clipboard: bool,
     image_path: Option<&Path>,
     text_path: &Path,
@@ -40,8 +42,10 @@ where
     }
 
     match image_path {
-        Some(_) => extract_text(text_path, warnings),
-        None => Default::default(),
+        Some(_) if text::should_extract_text(target) => extract_text(text_path, warnings),
+        // No image, or a target with no focused window (region): keep the
+        // `text` object's shape but skip the attempt and its warning.
+        _ => Default::default(),
     }
 }
 
@@ -139,6 +143,7 @@ pub(crate) fn capture(args: CaptureArgs) -> Result<ExitCode, Box<dyn std::error:
         .or(image.as_ref())
         .map(|info| info.path.as_path());
     let text = postprocess_capture(
+        args.target,
         args.clipboard,
         clipboard_image,
         &output_dir.join(format!("{stem}.txt")),
@@ -185,6 +190,7 @@ mod tests {
         let steps = RefCell::new(Vec::new());
         let mut warnings = Vec::new();
         let text = postprocess_capture(
+            CaptureTarget::Active,
             true,
             Some(Path::new("/tmp/shot.png")),
             Path::new("/tmp/shot.txt"),
@@ -202,5 +208,55 @@ mod tests {
         assert_eq!(steps.into_inner(), vec!["clipboard", "text"]);
         assert!(!text.available);
         assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn region_capture_skips_text_extraction_without_a_warning() {
+        use std::cell::Cell;
+
+        let extracted = Cell::new(false);
+        let mut warnings = Vec::new();
+        let text = postprocess_capture(
+            CaptureTarget::Region,
+            false,
+            Some(Path::new("/tmp/shot.png")),
+            Path::new("/tmp/shot.txt"),
+            &mut warnings,
+            |_| Ok(()),
+            |_, _| {
+                extracted.set(true);
+                Default::default()
+            },
+        );
+
+        assert!(!extracted.get());
+        assert!(warnings.is_empty());
+        let value = serde_json::to_value(&text).expect("serialize");
+        assert_eq!(value["available"], false);
+        assert_eq!(value["bytes"], 0);
+        assert!(value["path"].is_null());
+        assert!(value["source"].is_null());
+    }
+
+    #[test]
+    fn region_capture_still_copies_to_the_clipboard() {
+        use std::cell::Cell;
+
+        let copied = Cell::new(false);
+        let mut warnings = Vec::new();
+        postprocess_capture(
+            CaptureTarget::Region,
+            true,
+            Some(Path::new("/tmp/shot.png")),
+            Path::new("/tmp/shot.txt"),
+            &mut warnings,
+            |_| {
+                copied.set(true);
+                Ok(())
+            },
+            |_, _| Default::default(),
+        );
+
+        assert!(copied.get());
     }
 }
