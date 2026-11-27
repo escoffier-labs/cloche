@@ -784,3 +784,24 @@ family, and a selection function that lets the table grow.
   existed only for the reel brand and was removed with it. The
   `schema --for reel-render` target no longer exists; this is a breaking change
   for any script that used it.
+
+## Windows clipboard via in-process arboard (2026-11-27)
+
+- Decision: on Windows `copy_png` decodes the PNG with `image` and calls
+  `arboard::Clipboard::set_image` directly in the CLI process. No
+  `clipboard-serve` child.
+- Reason: the Linux detached server exists because X11 selections die with
+  their owner. The Windows clipboard stores the data in the OS (arboard uses
+  `CF_DIBV5`/`PNG` formats via clipboard-win), so it survives process exit and
+  the readiness-pipe machinery has nothing to do.
+- Dependency: no new crate. The arboard section now targets
+  `cfg(any(linux, windows))` with the same `default-features = false,
+  features = ["image-data"]`; `clipboard-win` and `windows-sys` were already in
+  `Cargo.lock` through arboard's target-specific deps, so the lock file is
+  unchanged.
+- The PNG-to-RGBA step is a pure `png_to_rgba` function so tests never open a
+  real clipboard. The Linux `serve_png` keeps its own inline decode on purpose
+  (Linux behavior unchanged). Failures are returned as strings and become
+  warnings, per the capture contract.
+- Not verified on a real Windows desktop; CI (windows-latest) compiles and runs
+  the unit tests only.

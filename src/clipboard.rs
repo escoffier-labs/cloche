@@ -1,5 +1,6 @@
-//! Copy capture images using wl-copy on Wayland or a detached arboard server
-//! on X11. Clipboard owners never inherit the caller's output pipes.
+//! Copy capture images using wl-copy on Wayland, a detached arboard server on
+//! X11, or an in-process arboard write on Windows. Clipboard owners never
+//! inherit the caller's output pipes.
 
 use std::path::Path;
 
@@ -11,8 +12,21 @@ use crate::util;
 pub fn copy_png(path: &Path) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        let _ = path;
-        Err("clipboard copy is not supported on Windows yet".to_string())
+        let bytes =
+            std::fs::read(path).map_err(|err| format!("cannot read {}: {err}", path.display()))?;
+        let (width, height, rgba) = png_to_rgba(&bytes)?;
+        let data = arboard::ImageData {
+            width,
+            height,
+            bytes: std::borrow::Cow::Owned(rgba),
+        };
+        // Windows keeps clipboard data after the owning process exits, so no
+        // detached server is needed (unlike X11).
+        let mut clipboard =
+            arboard::Clipboard::new().map_err(|err| format!("clipboard unavailable: {err}"))?;
+        clipboard
+            .set_image(data)
+            .map_err(|err| format!("clipboard image write failed: {err}"))
     }
     #[cfg(target_os = "linux")]
     {
@@ -87,6 +101,17 @@ pub fn copy_png(path: &Path) -> Result<(), String> {
         let _ = path;
         Err("clipboard copy is not supported on this platform".to_string())
     }
+}
+
+/// Decode image bytes to the (width, height, RGBA8) layout arboard expects.
+/// Pure so it can be unit tested without touching a clipboard.
+#[cfg(any(target_os = "windows", test))]
+fn png_to_rgba(bytes: &[u8]) -> Result<(usize, usize, Vec<u8>), String> {
+    let image = image::load_from_memory(bytes)
+        .map_err(|err| format!("cannot decode image for clipboard: {err}"))?
+        .into_rgba8();
+    let (width, height) = (image.width() as usize, image.height() as usize);
+    Ok((width, height, image.into_raw()))
 }
 
 /// Own the X11 clipboard until another application replaces its contents.
@@ -283,6 +308,38 @@ mod tests {
             check_png_size(16 * 1024 * 1024),
             Err("image too large for X11 clipboard (16.00 MiB > 15 MiB)".to_string())
         );
+    }
+
+    fn encode_png(image: &image::RgbaImage) -> Vec<u8> {
+        let mut out = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut out, image::ImageFormat::Png).unwrap();
+        out.into_inner()
+    }
+
+    #[test]
+    fn png_to_rgba_returns_dimensions_and_pixels() {
+        let mut image = image::RgbaImage::new(2, 1);
+        image.put_pixel(0, 0, image::Rgba([10, 20, 30, 255]));
+        image.put_pixel(1, 0, image::Rgba([40, 50, 60, 128]));
+        let (width, height, rgba) = png_to_rgba(&encode_png(&image)).unwrap();
+        assert_eq!((width, height), (2, 1));
+        assert_eq!(rgba, vec![10, 20, 30, 255, 40, 50, 60, 128]);
+    }
+
+    #[test]
+    fn png_to_rgba_expands_opaque_rgb_to_rgba() {
+        let image = image::RgbImage::from_pixel(1, 2, image::Rgb([1, 2, 3]));
+        let mut out = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut out, image::ImageFormat::Png).unwrap();
+        let (width, height, rgba) = png_to_rgba(&out.into_inner()).unwrap();
+        assert_eq!((width, height), (1, 2));
+        assert_eq!(rgba, vec![1, 2, 3, 255, 1, 2, 3, 255]);
+    }
+
+    #[test]
+    fn png_to_rgba_rejects_non_image_bytes() {
+        let err = png_to_rgba(b"not a png").unwrap_err();
+        assert!(err.contains("cannot decode image for clipboard"));
     }
 
     #[cfg(target_os = "linux")]
