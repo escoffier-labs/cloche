@@ -21,7 +21,7 @@ and Codex CLI have no built-in capture path. `cloche setup` is that path.
 - No Windows Print-key binding (Windows already has Win+Shift+S). On Windows,
   `setup` runs the agent-registration and verification steps and prints
   hotkey guidance instead of binding a key.
-- No new capture, polish, or reels behavior. This is wiring and verification
+- No new capture or polish behavior. This is wiring and verification
   around existing commands.
 - No GUI. Terminal only, stable JSON preserved.
 

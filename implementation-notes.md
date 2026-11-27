@@ -767,3 +767,20 @@ family, and a selection function that lets the table grow.
 - Out of scope (companion/follow-ups): cancel-on-disconnect, response caching,
   request cancellation. #39 already stopped idle re-renders that amplified the
   spam.
+
+## Remove Reels (2026-11-27)
+
+- Decision: the maintainer removed the Reels feature entirely (`cloche reels
+  render`, the Remotion and HyperFrames engines, `src/design.rs`,
+  `ReelRenderResult`, the `remotion/` project and its CI job). Cloche is a
+  screenshot tool; Shots, polish, gallery, studio, MCP, config, setup and the
+  `appshots` alias stay.
+- Reason: scope focus. The Node/Remotion toolchain caused recurring `npm audit`
+  failures that turned CI red with no code change, and neither engine handled
+  desktop recording (they only re-rendered an existing MP4), so the feature
+  never reached its planned `record` capture path.
+- Consequences: no crate dependency became unused (`rand`, `image`, `serde_json`
+  all have non-reel callers), so `Cargo.lock` is unchanged. `polish::random_style`
+  existed only for the reel brand and was removed with it. The
+  `schema --for reel-render` target no longer exists; this is a breaking change
+  for any script that used it.

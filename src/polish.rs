@@ -411,10 +411,6 @@ pub struct PresentationStyle {
     pub terrain: Option<crate::terrain::TerrainKind>,
 }
 
-pub fn random_style() -> PresentationStyle {
-    style_from_seed(random_seed())
-}
-
 /// All scene names accepted by `--scene` / [`scene_from_name`], in menu order.
 pub fn scene_names() -> Vec<&'static str> {
     crate::space::SceneKind::NAMES.to_vec()

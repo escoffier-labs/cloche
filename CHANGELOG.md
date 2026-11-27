@@ -64,6 +64,18 @@ All notable changes to this project are documented here. The format follows
 - An unreadable or malformed config is reported in the result's `warnings` and
   falls back to defaults instead of failing the capture.
 
+### Removed
+- **BREAKING: Reels.** `cloche reels render` (with `--engine remotion` and
+  `--engine hyperframes`), the vendored `remotion/` project, and the
+  `cloche schema --for reel-render` contract (`ReelRenderResult`) are gone, along
+  with the `CLOCHE_REMOTION_DIR` override.
+  Cloche is a screenshot tool again: Shots, polish, gallery, studio, MCP, config,
+  setup, and the `appshots` alias are unchanged. Reels was experimental and
+  narrowed the project's scope; its Node/Remotion toolchain also kept turning CI
+  red on npm audit advisories with no change to the code, and neither engine
+  handled desktop recording, only re-rendering an existing MP4. The `Remotion`
+  CI job and the Remotion bundle in release archives are removed too.
+
 ### Fixed
 - X11 clipboard images use a detached arboard server instead of xclip, avoiding
   clipboard stalls after an abandoned large-image transfer. A private readiness

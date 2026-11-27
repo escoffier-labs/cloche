@@ -6,12 +6,10 @@ mod clipboard;
 mod codex;
 mod config;
 mod contract;
-mod design;
 mod html;
 mod mcp;
 mod pattern;
 mod polish;
-mod reel_hyperframes;
 mod setup;
 mod sky;
 mod space;
@@ -31,7 +29,6 @@ pub fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
     match cli.command {
         Command::Capture(args) => cli::capture(args),
         Command::Polish(args) => cli::polish(args),
-        Command::Reels(args) => cli::reels(args),
         Command::Doctor(args) => cli::doctor(args),
         Command::ListWindows(args) => cli::list_windows(args),
         Command::Gallery(args) => cli::gallery(args),
