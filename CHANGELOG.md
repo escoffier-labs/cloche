@@ -62,6 +62,13 @@ All notable changes to this project are documented here. The format follows
   own.
 
 ### Changed
+- **Polished cards are about 27% smaller on disk, with identical pixels.** Card
+  PNGs were written with `image`'s default `Fast` compression and an alpha
+  channel the opaque card never uses. They now use zlib level 6 with adaptive
+  filtering and are stored as RGB. Over a 99-card sample the total went from
+  47.2 MB to 34.2 MB (median 261 KB to 189 KB, p90 1.20 MB to 0.95 MB). Polish
+  takes about 30 ms longer at the median (about 200 ms longer on the largest
+  cards). Decoded cards match the previous output exactly.
 - **Backdrop selection now scores palette names against the seed instead of
   indexing by position.** Indexing made the pool length the modulus, so adding
   one palette reshuffled what every existing seed rendered. Scoring by name

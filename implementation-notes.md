@@ -831,3 +831,50 @@ family, and a selection function that lets the table grow.
   always `image/png`, even for a JPEG or WebP `polish` input, so the JSON label
   alone would mislabel `imageVariant: raw` results.
 - The base64 encoder moved from `html.rs` to `util.rs` as `pub(crate)`.
+
+## Smaller card PNGs (2026-11-27)
+
+- Problem: on the maintainer's machine 2,398 polished cards took 1.19 GB against
+  223 MB of raw captures (median card 294 KB vs 43 KB raw). The procedural
+  backdrops carry per-pixel grain that PNG compresses poorly, and
+  `RgbaImage::save` encodes with `CompressionType::Fast` (fdeflate ultra-fast)
+  and always writes RGBA.
+- Change (lossless, shipped): `polish::encode_card_png` writes zlib level 6
+  (`CompressionType::Default`), `FilterType::Adaptive`, and 8-bit RGB when every
+  pixel is opaque (always true for `compose_card` output; a card with any
+  transparency keeps RGBA). No new dependency; this is the `image` crate's own
+  `PngEncoder`. Only the `polish`/`capture` card file path uses it. The studio's
+  in-memory previews still use the default encoder (interactive, not stored).
+- Measured on 99 real captures (every 23rd sorted raw, `--style-seed` 1001..1099,
+  release builds of origin/master vs this change, same seeds):
+
+  | | before | after |
+  |---|---|---|
+  | total bytes | 47,171,902 | 34,186,325 (-27.5%) |
+  | median card | 261,267 | 189,236 (-27.6%) |
+  | p90 card | 1,197,885 | 946,291 (-21.0%) |
+  | max card | 2,845,996 | 2,260,982 (-20.5%) |
+  | median `polish` wall time | 180 ms | 210 ms |
+  | mean / max wall time | 271 / 1179 ms | 324 / 1377 ms |
+
+  Wall time is the whole `cloche polish` process (decode, compose, encode, best
+  of two runs). All 99 before/after cards decode to identical pixels (max
+  channel difference 0, same dimensions).
+- Where the 27.5% comes from (re-encoding the baseline cards in isolation):
+  dropping alpha alone is -13.9% at fast compression; compression level alone
+  is -20.6% on RGBA; both together -27.5%.
+- Settings rejected: `Best`/level 9 is 1.2% smaller than level 6 at about 3x the
+  encode time (median 63 ms, max 600 ms). Level 3 is 25.2% smaller with a 7 ms
+  median encode (71 ms max), the right pick if the interactive hotkey path ever
+  feels slow. A fixed `Sub` or `Paeth` filter beat `Adaptive` on some cards and
+  lost on others, so `Adaptive` stays.
+- Trade-off: the encode is roughly 20 ms slower at the median on a 180 ms
+  polish. Cards are written once and read many times, so we took the storage.
+- Not shipped, measured only: the remaining bulk is the grain the backdrops add
+  (`GRAIN_STRENGTH` 2.4 in `polish.rs`, `sky.rs`, `terrain.rs`, `space.rs`,
+  `pattern.rs`). On the same 99 seeds with the lossless encoder, strength 1.2
+  gives 30.6 MB (-10.6% more) and strength 0 gives 22.3 MB (-34.8% more, but the
+  gradients can band, which is what the grain exists to hide). This changes how
+  cards look, so it is left as a decision for the maintainer rather than
+  enabled. The screenshot region is never touched by it.
+
