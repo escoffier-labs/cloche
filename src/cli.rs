@@ -45,7 +45,7 @@ pub enum Command {
 }
 
 /// Style an existing image into a Cloche presentation card: rounded window,
-/// layered shadows, and a vibrant gradient backdrop.
+/// layered shadows, and a procedural backdrop.
 #[derive(Debug, Args)]
 pub struct PolishArgs {
     /// Image to style (PNG, JPEG, or WebP).
@@ -54,7 +54,8 @@ pub struct PolishArgs {
     /// Output card path; defaults to `<input>-card.png` next to the input.
     #[arg(long)]
     pub out: Option<PathBuf>,
-    /// Backdrop palette (gradient or deep-space scene); random when omitted.
+    /// Backdrop palette (gradient, space, pattern, sky, or terrain); a random
+    /// space palette when omitted. See `cloche config options` for the full list.
     #[arg(long, value_parser = palette_name_parser())]
     pub palette: Option<String>,
     /// Pin the deep-space scene look (e.g. `jwst`, `alma`, `cmb`); random when
@@ -232,19 +233,19 @@ pub struct ConfigArgs {
 pub enum ConfigCommand {
     /// Print the effective preferences and the file they came from.
     Show,
-    /// Print every palette and scene the pickers accept.
+    /// Print every palette (with its kind) and every scene, motif, sky, and
+    /// terrain the pickers accept.
     Options,
     /// Update the persisted preferences.
-    ///
-    /// Boxed because the args struct carries one field per styling axis and
-    /// dwarfs the unit variants, which trips `clippy::large_enum_variant`.
+    // Boxed because the args struct carries one field per styling axis and
+    // dwarfs the unit variants, which trips `clippy::large_enum_variant`.
     Set(Box<ConfigSetArgs>),
 }
 
 #[derive(Debug, Args)]
 pub struct ConfigSetArgs {
-    /// `random` draws from the pools below; `pinned` applies `--palette` and
-    /// `--scene` to every capture.
+    /// `random` draws from the pools below; `pinned` applies the pinned palette
+    /// and its scene, motif, sky, or terrain to every capture.
     #[arg(long, value_enum)]
     pub mode: Option<ConfigPolishMode>,
     /// Palette to pin. Stored either way, applied only in `pinned` mode.
