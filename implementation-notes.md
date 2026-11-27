@@ -805,3 +805,29 @@ family, and a selection function that lets the table grow.
   warnings, per the capture contract.
 - Not verified on a real Windows desktop; CI (windows-latest) compiles and runs
   the unit tests only.
+
+## MCP image content block and size cap (2026-11-27)
+
+- Decision: `capture`, `polish`, and `latest` tool results carry a second content
+  block, `{"type":"image","data":<base64>,"mimeType":...}`, after the unchanged
+  JSON `text` block. The server still shells out to `current_exe`; it reads the
+  file named in the CLI JSON (`presentationImage.path`, `card.path`, or the raw
+  `image.path`/`input.path`) only after the subprocess returns.
+- Size cap: `MAX_INLINE_IMAGE_BYTES` is 2 MiB of file bytes (about 2.8 MB once
+  base64 encoded, on a single stdio line). Chosen as a judgment call, not a
+  measured client limit: MCP clients commonly truncate or reject very large tool
+  results, and an image that overflows the model's context is worse than a path.
+  Over the cap the server adds a text note and leaves the image out. If real
+  cards turn out to exceed 2 MiB often, raise the constant or add downscaling
+  (that would mean a new code path in the server, so decide it deliberately).
+- Failure policy: a missing file, an unreadable file, or unparseable CLI JSON
+  never turns a successful capture into an error. Missing and oversized files
+  produce a note; unparseable JSON produces no extra block.
+- `imageVariant` is cheap because the JSON already has both paths. The preferred
+  variant falls back to the other, so `presentation: raw` captures still return
+  an image. `includeImage` and `imageVariant` are MCP-only and are not forwarded
+  to the CLI. The MIME type comes from the file's magic bytes (PNG, JPEG,
+  WebP), falling back to the JSON's `mime` field. The CLI's `ImageInfo.mime` is
+  always `image/png`, even for a JPEG or WebP `polish` input, so the JSON label
+  alone would mislabel `imageVariant: raw` results.
+- The base64 encoder moved from `html.rs` to `util.rs` as `pub(crate)`.

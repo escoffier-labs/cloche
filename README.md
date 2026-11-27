@@ -441,6 +441,8 @@ Other agents should treat Cloche as a normal subprocess tool. The core command h
 
 `cloche mcp` runs a minimal stdio MCP server for clients that prefer the Model Context Protocol over direct subprocess calls. It speaks newline-delimited JSON-RPC 2.0 on stdin/stdout and exposes `capture`, `polish`, `list_windows`, `doctor`, `latest`, and `gallery` as tools. Each tool call shells out to the same binary, so the JSON contract is identical to the CLI.
 
+**Images in tool results.** The `capture`, `polish`, and `latest` tools return the CLI JSON as the first `text` content block, then an MCP `image` content block (`{"type":"image","data":"<base64>","mimeType":"image/png"}`) holding the presentation card, so a client in a sandbox or on another machine can see the picture without opening the file path. Two optional arguments control it: `includeImage` (boolean, default `true`) and `imageVariant` (`card` or `raw`, default `card`; it falls back to the other image when the preferred one is not in the result). Images over 2 MiB are not inlined; the result carries a short text note instead and the paths in the JSON still work. A missing or unreadable file also becomes a note, never a failed tool call.
+
 `cloche setup agent` registers this server with Claude Code, OpenClaw, and Codex CLI automatically (backing up any config it edits, and skipping clients already configured). The manual config below is for other clients or if you prefer to wire it yourself.
 
 Register it like any stdio MCP server:
