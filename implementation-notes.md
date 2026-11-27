@@ -826,6 +826,8 @@ family, and a selection function that lets the table grow.
 - `imageVariant` is cheap because the JSON already has both paths. The preferred
   variant falls back to the other, so `presentation: raw` captures still return
   an image. `includeImage` and `imageVariant` are MCP-only and are not forwarded
-  to the CLI. The MIME type comes from the JSON's `mime` field (so a JPEG
-  `polish` input in raw mode is labelled correctly), defaulting to `image/png`.
+  to the CLI. The MIME type comes from the file's magic bytes (PNG, JPEG,
+  WebP), falling back to the JSON's `mime` field. The CLI's `ImageInfo.mime` is
+  always `image/png`, even for a JPEG or WebP `polish` input, so the JSON label
+  alone would mislabel `imageVariant: raw` results.
 - The base64 encoder moved from `html.rs` to `util.rs` as `pub(crate)`.

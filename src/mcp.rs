@@ -426,12 +426,30 @@ fn image_content(name: &str, arguments: &Value, cli_json: &str, max_bytes: u64) 
         ));
     }
     match std::fs::read(&path) {
-        Ok(bytes) => vec![json!({
-            "type": "image",
-            "data": crate::util::base64_encode(&bytes),
-            "mimeType": mime
-        })],
+        Ok(bytes) => {
+            // The CLI's ImageInfo.mime is always "image/png", but `polish`
+            // accepts JPEG and WebP input, so trust the file's magic bytes.
+            let mime = sniff_image_mime(&bytes).map_or(mime, str::to_string);
+            vec![json!({
+                "type": "image",
+                "data": crate::util::base64_encode(&bytes),
+                "mimeType": mime
+            })]
+        }
         Err(err) => note(format!("could not read {path}: {err}")),
+    }
+}
+
+/// MIME type from the file signature for the formats `polish` accepts.
+fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else {
+        None
     }
 }
 
@@ -880,6 +898,29 @@ mod tests {
         let json_text = json!({ "ok": true, "image": { "path": &raw, "mime": "image/jpeg" } });
         let blocks = image_content("capture", &json!({}), &json_text.to_string(), 1024);
         assert_eq!(blocks[0]["mimeType"], "image/jpeg");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn mime_comes_from_file_signature_not_cli_label() {
+        // The CLI labels every image "image/png", including a JPEG or WebP
+        // `polish` input; the attached block must match the real bytes.
+        let dir = image_temp_dir("sniff");
+        let jpeg = dir.join("input.jpg");
+        std::fs::write(&jpeg, [0xFF, 0xD8, 0xFF, 0xE0, 0, 0]).expect("jpeg");
+        let webp = dir.join("input.webp");
+        std::fs::write(&webp, b"RIFF\0\0\0\0WEBPVP8 ").expect("webp");
+        for (path, want) in [(&jpeg, "image/jpeg"), (&webp, "image/webp")] {
+            let json_text = json!({ "ok": true, "input": { "path": path, "mime": "image/png" } });
+            let args = json!({ "imageVariant": "raw" });
+            let blocks = image_content("polish", &args, &json_text.to_string(), 1024);
+            assert_eq!(blocks[0]["mimeType"], want);
+        }
+        assert_eq!(
+            sniff_image_mime(b"\x89PNG\r\n\x1a\nrest"),
+            Some("image/png")
+        );
+        assert_eq!(sniff_image_mime(b"plain"), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
