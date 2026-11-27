@@ -1,10 +1,17 @@
+use std::io::Write;
 use std::path::Path;
 
 use image::DynamicImage;
+use image::ExtendedColorType;
 use image::GenericImageView;
 use image::ImageBuffer;
+use image::ImageEncoder;
+use image::ImageResult;
 use image::Rgba;
 use image::RgbaImage;
+use image::codecs::png::CompressionType;
+use image::codecs::png::FilterType;
+use image::codecs::png::PngEncoder;
 use image::imageops;
 use rand::Rng;
 use rand::SeedableRng;
@@ -666,11 +673,45 @@ pub fn render_codex_card(
         input = crop_frame_extents(input, extents);
     }
     let canvas = compose_card(&input, style);
-    canvas.save(output_path).map_err(|source| AppError::Image {
+    let write = std::fs::File::create(output_path)
+        .map_err(image::ImageError::IoError)
+        .and_then(|file| {
+            let mut file = std::io::BufWriter::new(file);
+            encode_card_png(&mut file, &canvas)?;
+            file.flush().map_err(image::ImageError::IoError)
+        });
+    write.map_err(|source| AppError::Image {
         path: output_path.to_path_buf(),
         source,
-    })?;
-    Ok(())
+    })
+}
+
+/// Encode a card as PNG.
+///
+/// `image`'s `save` defaults to `CompressionType::Fast` (fdeflate ultra-fast),
+/// which leaves the grain-heavy procedural backdrops about 28% larger than
+/// zlib level 6 does. Cards are written once and read many times, so the extra
+/// encode time (tens of milliseconds) buys smaller files. Filtering stays
+/// `Adaptive`: a single fixed filter did better on some backdrops and worse on
+/// the screenshot region. Both settings are lossless; decoding yields exactly
+/// the pixels of `card`.
+///
+/// Cards from [`compose_card`] are fully opaque, so they are stored as 8-bit
+/// RGB and the redundant alpha channel is dropped. A card with any non-opaque
+/// pixel keeps its alpha and is stored as RGBA.
+pub fn encode_card_png<W: Write>(writer: W, card: &RgbaImage) -> ImageResult<()> {
+    let (width, height) = card.dimensions();
+    let encoder =
+        PngEncoder::new_with_quality(writer, CompressionType::Default, FilterType::Adaptive);
+    if card.pixels().all(|pixel| pixel[3] == 255) {
+        let rgb: Vec<u8> = card
+            .pixels()
+            .flat_map(|pixel| [pixel[0], pixel[1], pixel[2]])
+            .collect();
+        encoder.write_image(&rgb, width, height, ExtendedColorType::Rgb8)
+    } else {
+        encoder.write_image(card.as_raw(), width, height, ExtendedColorType::Rgba8)
+    }
 }
 
 /// Pure composition step: rounded window on a styled backdrop with layered
@@ -1001,6 +1042,33 @@ mod tests {
             height,
             Rgba([200, 200, 200, 255]),
         ))
+    }
+
+    fn roundtrip(card: &RgbaImage) -> (RgbaImage, image::ColorType) {
+        let mut bytes = Vec::new();
+        encode_card_png(&mut bytes, card).expect("encode card");
+        let decoded = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
+            .expect("decode card");
+        (decoded.to_rgba8(), decoded.color())
+    }
+
+    #[test]
+    fn encoded_card_round_trips_to_identical_pixels() {
+        let style = style_from_seed(7);
+        let card = compose_card(&test_input(320, 200), &style);
+        let (decoded, color) = roundtrip(&card);
+        assert_eq!(decoded, card);
+        // Opaque cards drop the alpha channel.
+        assert_eq!(color, image::ColorType::Rgb8);
+    }
+
+    #[test]
+    fn encoded_card_with_transparency_keeps_alpha() {
+        let mut card = RgbaImage::from_pixel(16, 16, Rgba([10, 20, 30, 255]));
+        card.put_pixel(3, 4, Rgba([200, 100, 50, 128]));
+        let (decoded, color) = roundtrip(&card);
+        assert_eq!(decoded, card);
+        assert_eq!(color, image::ColorType::Rgba8);
     }
 
     #[test]
