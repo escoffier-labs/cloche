@@ -4,6 +4,7 @@ mod captures;
 mod cli;
 mod clipboard;
 mod codex;
+mod commands;
 mod config;
 mod contract;
 mod html;
@@ -22,28 +23,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use cli::Cli;
-use cli::Command;
 
 pub fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
-    let cli = Cli::parse();
-    match cli.command {
-        Command::Capture(args) => cli::capture(args),
-        Command::Polish(args) => cli::polish(args),
-        Command::Doctor(args) => cli::doctor(args),
-        Command::ListWindows(args) => cli::list_windows(args),
-        Command::Gallery(args) => cli::gallery(args),
-        Command::Latest(args) => cli::latest(args),
-        Command::Preview(args) => cli::preview(args),
-        Command::Schema(args) => cli::schema(args),
-        Command::Config(args) => cli::config(args),
-        Command::CodexPayload(args) => codex::payload(args),
-        Command::Mcp(args) => mcp::run(args),
-        Command::Setup(args) => setup::run(args),
-        Command::Studio(args) => studio::run(args),
-        #[cfg(target_os = "linux")]
-        Command::ClipboardServe { png_path } => {
-            clipboard::serve_png(&png_path)?;
-            Ok(ExitCode::SUCCESS)
-        }
-    }
+    cli::dispatch(Cli::parse())
 }

@@ -878,3 +878,34 @@ family, and a selection function that lets the table grow.
   cards look, so it is left as a decision for the maintainer rather than
   enabled. The screenshot region is never touched by it.
 
+## Split cli.rs into per-command modules (2026-11-27)
+
+`src/cli.rs` had grown to about 1,550 lines: the clap definitions, every command
+handler, `image_info` and other helpers, config mutation, and roughly 600 lines
+of tests. It is now split with no behavior change:
+
+- `src/cli.rs` keeps only the clap types (`Cli`, `Command`, every `*Args`
+  struct and value enum, the palette/scene/motif/sky/terrain value parsers) and
+  `dispatch`, which `lib::run` calls after parsing. The `ClipboardServe` parse
+  and hidden-from-help tests stay there because they test `Cli` itself.
+- `src/commands.rs` plus `src/commands/{capture,polish,doctor,gallery,preview,schema,config}.rs`
+  hold one command family each, with their unit tests. `doctor.rs` also hosts
+  `list-windows` and `gallery.rs` also hosts `latest`, since each pair is a few
+  lines and shares output plumbing. Same file style as `setup.rs` + `setup/`.
+- Helpers used by more than one family (`VERSION`, `print_json`, `image_info`,
+  `open_path`, and the test-only `temp_dir` and `write_test_image`) live in
+  `commands.rs` as private items; the family modules reach them through
+  `super::`. Handlers are `pub(crate)` and re-exported from `commands.rs` under
+  their original names, so the family modules, not the dispatcher, own the
+  command names.
+- `run_config` is `pub(super)` and `config_set` and `empty_set_args` are
+  test-only helpers in `commands/config.rs`, because the polish tests that pin a
+  palette through the persisted config need them.
+- Function bodies were moved verbatim. The card-writing call
+  (`polish::render_codex_card`) is untouched in `commands/capture.rs` and
+  `commands/polish.rs`, and `polish.rs` itself was not edited, so concurrent
+  work on the card pipeline rebases onto a single-file move instead of a rewrite.
+- Checked by diffing `cloche --help`, every `cloche <cmd> --help`, and
+  `cloche schema --for capture|polish|config` (pretty and compact) before and
+  after: byte-identical. The test list is unchanged at 259 tests (24 of them
+  moved out of `cli::tests`).
