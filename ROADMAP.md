@@ -17,7 +17,12 @@ Cloche is a screenshot tool. A Shot is a still capture with raw and presentation
 - Codex app-server payload generation through existing `localImage` input.
 - Capture history helpers: `gallery`, `latest`, and `preview`/`open`.
 - Self-contained HTML gallery export through `gallery --html` for sharing batches.
-- Optional stdio MCP server (`cloche mcp`) wrapping the CLI contract.
+- Region capture (`--target region`) through Flameshot or ImageMagick `import` on X11. It needs a human at the desk, so it is not for headless agents.
+- Clipboard copy for finished cards and raw shots (`--clipboard`): `wl-copy` on Wayland, a detached arboard server on X11, and an in-process arboard write on Windows.
+- Five procedural backdrop families (gradient, space, pattern, sky, terrain), chosen with `--palette` plus a per-family flag. `cloche config options` lists the live catalog.
+- Persisted backdrop preferences (`cloche config`) and `cloche studio`, a local page for picking backdrops by eye. Sky and terrain are not on the studio page yet.
+- `cloche setup` onboarding: hotkey install, MCP registration for supported agent clients, and a verify step.
+- Optional stdio MCP server (`cloche mcp`) wrapping the CLI contract, with the card or raw frame returned as an MCP image content block.
 - Compatibility binary and MCP path through `appshots`.
 
 ## Rename And Repository Transition (done)
@@ -26,6 +31,14 @@ The rebrand shipped: `cloche` is the primary binary/package name, the repository
 
 - Keep `appshots` as a compatibility binary until existing automation, docs, release assets, and downstream MCP configs have moved.
 - Keep the old Appshots context in docs only where it explains compatibility or Codex's documented Appshots feature.
+
+## Next: Wayland Capture
+
+The next major item. Wayland has no generic way to read another app's window, so the plan is portal-based capture through `xdg-desktop-portal`:
+
+- Request screenshots and window capture through the portal instead of compositor-specific tools. The portal shows a consent prompt, so a person has to approve each capture. It will not work unattended.
+- Keep `grim` for wlroots screen capture and keep the existing X11 paths unchanged.
+- Keep real Wayland capture in desktop-session tests, since it cannot run headless.
 
 ## Windows Hardening
 
@@ -39,7 +52,7 @@ The rebrand shipped: `cloche` is the primary binary/package name, the repository
   Debian/Ubuntu, Fedora/RHEL, Arch, openSUSE, and Alpine where practical.
 - Keep container tests focused on build, packaging, CLI contract, `schema`, `doctor`, and helper-detection behavior.
 - Keep real screenshot capture in VM or desktop-session tests because it needs a graphical desktop session.
-- Add optional VM/desktop smoke targets for GNOME X11, GNOME Wayland, KDE, and wlroots compositors.
+- Add optional VM/desktop smoke targets for GNOME X11, GNOME Wayland, KDE, and wlroots compositors. The Wayland targets gain value once portal capture lands.
 
 ## Release Packaging
 
@@ -49,5 +62,6 @@ The rebrand shipped: `cloche` is the primary binary/package name, the repository
 
 ## Later
 
-- Wayland compositor-specific active-window support where safe and possible.
-- Additional presentation styles and user-configurable style presets.
+- Sky and terrain palettes on the `cloche studio` page.
+- Wayland compositor-specific active-window support where safe and possible, for compositors the portal path does not cover.
+- Named style presets beyond the persisted preferences in `cloche config`.

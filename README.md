@@ -78,7 +78,7 @@ telescope look; the same `--style-seed` reproduces one sky exactly:
 cloche polish shot.png --palette horsehead-flame --scene alma --style-seed 7
 ```
 
-See [Space backdrops](#space-backdrops) for the full palette and scene lists.
+See [Backdrops](#backdrops) for every family and how to list them.
 Live Studio and more samples: [cloche.escoffierlabs.dev](https://cloche.escoffierlabs.dev).
 
 ## Quick Start
@@ -103,7 +103,7 @@ letting the seed choose:
 cloche polish /tmp/diff.png --scene jwst --style-seed 12345
 ```
 
-See [Space backdrops](#space-backdrops) for the full list of looks.
+See [Backdrops](#backdrops) for the other families.
 
 Preview the latest capture:
 
@@ -124,14 +124,35 @@ Generate a Codex `turn/start` payload from a Shot (pass the out-dir, or a
 cloche codex-payload --thread-id "$THREAD_ID" "$OUT"
 ```
 
-## Space backdrops
+## Backdrops
 
-Every card is framed on a procedural deep-space scene generated from the style
-seed. Nothing is a stock image: the nebulae, starfields, and objects are drawn
-from noise at render time, so each seed is a different sky and the same
-`--style-seed` reproduces one exactly.
+Every card is framed on a procedural backdrop drawn from the style seed. Nothing
+is a stock image or a tiled bitmap: each one is generated from noise at render
+time, so the same `--style-seed` reproduces a card exactly. There are five
+families. A palette carries the colors, and every family except gradient has a
+second axis that carries the structure:
 
-Eight palettes are color-sampled from astrophotography of real objects, and a
+| Family | Palettes | Second axis (flag) | What it draws |
+|---|---|---|---|
+| Space | deep-space `--palette` names | `--scene` | nebulae, starfields, telescope looks |
+| Pattern | woven and ruled `--palette` names | `--motif` | plaid, weave, grid, and similar cloth or paper |
+| Sky | sky `--palette` names | `--sky` | cloud decks, storms, lightning, twilight, aurora |
+| Terrain | terrain `--palette` names | `--terrain` | dunes, mesa, badlands, glacier |
+| Gradient | soft gradient `--palette` names | none | a gradient with glows and light streaks |
+
+`cloche config options` prints the live catalog: every palette with its kind,
+plus every scene, motif, sky, and terrain. Use it instead of a count in the
+docs, since the lists grow. The sections below describe each family.
+
+By default only the space palettes are in the random rotation. The other
+families appear when you name a palette with `--palette`, or list them in the
+random pool (see [Backdrop Preferences](#backdrop-preferences)). A second-axis
+flag applies only to its own family; on any other palette it is a no-op
+warning.
+
+### Space backdrops
+
+The palettes are color-sampled from astrophotography of real objects, and a
 scene layers gas, dust lanes, starfields, and one or more focal objects on top:
 
 - **Nebulae:** domain-warped clouds with bright ionization fronts and dark
@@ -146,11 +167,10 @@ scene layers gas, dust lanes, starfields, and one or more focal objects on top:
   planetary nebulae, open clusters, gravitational-lensing arcs, and rare
   ultra-deep-field and Planck-CMB frames.
 
-Twelve deep-space palettes are in the default random rotation. The nine
-gradient palettes (`violet-haze`, `ember-glow`, `aurora-teal`, `rose-noir`,
-`midnight-sky`, `sea-glass`, `peach-dusk`, `ink-wash`, `citrus-noon`) and the
-six pattern palettes stay out of it unless you name them, either with
-`--palette` or in the random pool.
+The deep-space palettes are the default random rotation: `orion-emission`,
+`carina-hubble`, `pleiades-reflection`, `rho-ophiuchi`, `milkyway-core`,
+`andromeda-haze`, `horsehead-flame`, `lagoon-trifid`, `eagle-pillars`,
+`crab-remnant`, `tarantula-web`, and `sombrero-dust`.
 
 Pin a look with `--scene` instead of rolling the seed:
 
@@ -161,14 +181,13 @@ cloche polish shot.png --scene cmb --style-seed 42
 
 Scenes: `nebula`, `jwst`, `hubble`, `galaxy`, `alma`, `ring`, `butterfly`,
 `edge-on`, `sun`, `sdo`, `cluster`, `deep-field`, `lensing`, `veil`, `remnant`,
-`cmb`. `--scene` applies only to space palettes. On a gradient palette it is a
-no-op warning. `--palette` and `--scene` are available on `cloche capture`,
-`cloche polish`, and the matching MCP tools.
+`cmb`. `--scene` applies only to space palettes. `--palette` and the second-axis
+flags (`--scene`, `--motif`, `--sky`, `--terrain`) are available on
+`cloche capture`, `cloche polish`, and the matching MCP tools.
 
-## Pattern backdrops
+### Pattern backdrops
 
-The third backdrop family: woven and ruled geometry, drawn from the seed the
-same way the space scenes are. A pattern palette carries the colours and a
+Woven and ruled geometry, drawn from the seed the same way the space scenes are. A pattern palette carries the colours and a
 motif carries the structure, so `--palette` and `--motif` compose exactly like
 `--palette` and `--scene`.
 
@@ -191,18 +210,42 @@ both ways; houndstooth is derived from a 2/2 twill with a four-thread colour
 repeat, which is what actually grows the teeth. Both resolve cleanly at any card
 size.
 
-## How many backdrops there are
+### Sky backdrops
 
-Palettes and second axes multiply:
+Cloud decks, storms, lightning, and twilight, drawn as a banded ramp plus one
+structural feature. The palettes are sampled from photographs of the named
+conditions: `blue-hour`, `golden-hour`, `supercell`, `mammatus`,
+`aurora-curtain`, `cirrus-blue`, and `alpenglow`. `--sky` pins the condition:
+`blue-hour`, `golden-hour`, `overcast`, `cirrus`, `mackerel`, `mammatus`,
+`storm`, `bolt`, `crepuscular`, or `aurora`.
 
-| Family | Palettes | Second axis | Combinations |
-|---|---|---|---|
-| Deep space | 12 | 16 scenes | 192 |
-| Pattern | 6 | 12 motifs | 72 |
-| Gradient | 9 | none | 9 |
+```bash
+cloche polish shot.png --palette supercell --sky bolt
+cloche polish shot.png --palette alpenglow --sky crepuscular --style-seed 42
+```
 
-273 in all, and every seed varies the result again. `cloche studio` shows the
-cross product: hover a backdrop and the scene or motif sheet redraws on it.
+### Terrain backdrops
+
+A cross-section of ground: sky above a horizon, rock, sand, or ice below. The four
+palettes (`dunes`, `mesa`, `badlands`, `glacier`) and the four `--terrain`
+kinds share those names.
+
+```bash
+cloche polish shot.png --palette mesa --terrain mesa
+cloche polish shot.png --palette glacier --terrain glacier --style-seed 7
+```
+
+### Gradient backdrops
+
+The original look: a soft three-stop gradient with glows and light streaks.
+There is no second axis. Gradient palettes are `violet-haze`, `ember-glow`,
+`aurora-teal`, `rose-noir`, `midnight-sky`, `sea-glass`, `peach-dusk`,
+`ink-wash`, and `citrus-noon`.
+
+`cloche studio` shows the cross product for the space, pattern, and gradient
+families: hover a backdrop and the scene or motif sheet redraws on it. The page
+does not list the sky and terrain palettes yet, so set those with `--palette`
+or `cloche config set`.
 
 ## Backdrop Preferences
 
@@ -210,7 +253,7 @@ Pinning a look on every invocation gets old, so `cloche config` stores the
 choice once and both `capture` and `polish` read it with no flags:
 
 ```bash
-cloche config options                 # every palette (with kind) and scene
+cloche config options                 # every palette (with kind), scene, motif, sky, terrain
 cloche config show                    # current preferences and where they live
 
 # Always use one backdrop.
@@ -220,6 +263,7 @@ cloche config set --mode pinned --palette orion-emission --scene jwst
 cloche config set --mode random --palettes carina-hubble,pleiades-reflection
 cloche config set --scenes alma,veil
 cloche config set --palettes tartan-moss,oxford-navy --motifs plaid,houndstooth
+cloche config set --palettes supercell,alpenglow --skies bolt,crepuscular
 
 cloche config set --clear all         # back to defaults
 ```
@@ -235,19 +279,24 @@ path outright):
     "palette": null,
     "scene": null,
     "motif": null,
+    "sky": null,
+    "terrain": null,
     "palettes": ["carina-hubble", "pleiades-reflection"],
     "scenes": ["alma", "veil"],
-    "motifs": ["plaid", "houndstooth"]
+    "motifs": ["plaid", "houndstooth"],
+    "skies": [],
+    "terrains": []
   }
 }
 ```
 
-- `mode` is `random` or `pinned`. `pinned` applies `palette`/`scene`; `random`
-  leaves them on file and draws from the pools instead.
-- `palettes`, `scenes`, and `motifs` are the random pools. Empty means no
-  constraint: every deep-space palette, and the seed's own scene or motif pick.
-  Naming a gradient or pattern palette here is the only way to get those
-  families into the random rotation.
+- `mode` is `random` or `pinned`. `pinned` applies `palette` and its
+  `scene`, `motif`, `sky`, or `terrain`; `random` leaves them on file and draws
+  from the pools instead.
+- `palettes`, `scenes`, `motifs`, `skies`, and `terrains` are the random pools.
+  Empty means no constraint: every deep-space palette, and the seed's own pick
+  on the second axis. Naming a gradient, pattern, sky, or terrain palette here
+  is how those families get into the random rotation.
 - Precedence is flag, then config, then the built-in random pick, so a one-off
   `--palette` always wins.
 - A missing file means defaults. A malformed one is reported in the result's
@@ -266,10 +315,12 @@ cloche studio --port 0     # let the OS pick a port
 cloche studio --print-url  # print the URL as JSON and exit
 ```
 
-A local page showing every backdrop and scene as a real render. Click to switch
-one in or out of the random pool, or switch to Pin one to lock a single
-backdrop. Changes are written to the same `config.json` the CLI reads, and the
-page shows the equivalent `cloche config set` for whatever you have selected.
+A local page showing the space, gradient, and pattern backdrops, and every
+scene and motif, as real renders. Click to switch one in or out of the random
+pool, or switch to Pin one to lock a single backdrop. Changes are written to the
+same `config.json` the CLI reads, and the page shows the equivalent
+`cloche config set` for whatever you have selected. Sky and terrain backdrops
+are not on the page yet.
 
 The hero preview uses your newest capture, so the page will display whatever you
 last screenshotted. Worth knowing before you screen-share it.
@@ -297,6 +348,8 @@ cloche config show
 cloche config options
 cloche config set --mode pinned --palette orion-emission --scene jwst
 cloche config set --mode pinned --palette tartan-moss --motif houndstooth
+cloche config set --mode pinned --palette supercell --sky bolt
+cloche config set --mode pinned --palette mesa --terrain mesa
 cloche config set --mode random --palettes carina-hubble,pleiades-reflection
 cloche config set --motifs plaid,gingham,houndstooth
 cloche config set --clear all
