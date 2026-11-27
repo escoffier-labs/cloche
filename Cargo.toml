@@ -43,7 +43,11 @@ serde = { version = "1.0", default-features = false, features = ["std", "derive"
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 thiserror = { version = "2.0", default-features = false, features = ["std"] }
 
-[target.'cfg(target_os = "linux")'.dependencies]
+# Linux serves the X11 clipboard through a detached process. Windows writes the
+# clipboard in-process (the data outlives the process). `image-data` is the only
+# feature enabled on both: it provides ImageData/set_image, and on Windows it
+# pulls windows-sys and clipboard-win, which were already in Cargo.lock.
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 arboard = { version = "3.6", default-features = false, features = ["image-data"] }
 
 [dev-dependencies]

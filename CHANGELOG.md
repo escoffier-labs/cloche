@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `capture --clipboard` now works on Windows: the PNG is decoded to RGBA and
+  written with arboard in-process. Failures remain warnings. `arboard` is now a
+  Linux and Windows dependency (same `image-data` feature only).
 - `cloche codex-payload --card` attaches the polished presentation image instead
   of the default raw capture frame.
 - **Persisted backdrop preferences.** `cloche config` stores styling choices in
