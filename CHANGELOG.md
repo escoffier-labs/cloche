@@ -26,13 +26,13 @@ All notable changes to this project are documented here. The format follows
 - **Terrain backdrops**: dunes, mesa, badlands, and glacier, each a sky above a
   horizon with ground below. Four palettes and four kinds share those names, and
   `--terrain` pins the kind.
-- **Ten more space and gradient palettes.** Four deep-space (`eagle-pillars`,
+- **Eight more space and gradient palettes.** Four deep-space (`eagle-pillars`,
   `crab-remnant`, `tarantula-web`, `sombrero-dust`), bringing the default random
   rotation to twelve, and four gradients (`sea-glass`, `peach-dusk`, `ink-wash`,
   `citrus-noon`).
-- **`--palette`, `--scene`, `--motif`, `--sky`, and `--terrain` on
-  `cloche capture`**, matching the flags `polish` already had, plus the same
-  arguments on both MCP tools. Explicit flags override the persisted config.
+- **`--palette`, `--scene`, `--motif`, `--sky`, and `--terrain` on both
+  `cloche capture` and `cloche polish`** (0.7.0 `polish` had only `--palette`
+  and `--scene`), plus the same arguments on both MCP tools. Explicit flags override the persisted config.
 - **Persisted backdrop preferences.** `cloche config` stores styling choices in
   `~/.config/cloche/config.json` (`$XDG_CONFIG_HOME` / `%APPDATA%` honored,
   `CLOCHE_CONFIG` overrides), and both `cloche capture` and `cloche polish` read

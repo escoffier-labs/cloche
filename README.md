@@ -197,8 +197,8 @@ cloche polish shot.png --palette blueprint --motif grid --style-seed 42
 ```
 
 Pattern palettes: `tartan-moss`, `oxford-navy`, `blueprint`, `ledger-cream`,
-`picnic-red`, `workshop-ochre`. The last two are light grounds, which give a
-card a very different weight from the dark skies.
+`picnic-red`, `workshop-ochre`. `ledger-cream` and `picnic-red` are light
+grounds, which give a card a very different weight from the dark skies.
 
 Motifs: `plaid`, `gingham`, `stripe`, `rule`, `grid`, `diagonal`, `chevron`,
 `dot`, `crosshatch`, `weave`, `herringbone`, `houndstooth`. `--motif` applies
