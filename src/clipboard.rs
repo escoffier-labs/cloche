@@ -102,7 +102,7 @@ pub fn copy_png(path: &Path) -> Result<(), String> {
     }
 }
 
-/// Decode image bytes to the (width, height, RGBA8) layout arboard expects.
+/// Decode image bytes to (width, height, RGBA8) for the Windows clipboard formats.
 /// Pure so it can be unit tested without touching a clipboard.
 #[cfg(any(target_os = "windows", test))]
 fn png_to_rgba(bytes: &[u8]) -> Result<(usize, usize, Vec<u8>), String> {
@@ -249,8 +249,10 @@ fn write_image_private(png: &[u8], dibv5: &[u8]) -> Result<(), String> {
         }
         Ok(())
     };
-    write_all().inspect_err(|_| {
-        let _ = raw::empty();
+    write_all().map_err(|err| match raw::empty() {
+        Ok(()) => err,
+        // The clipboard may still hold a partly written, unmarked image.
+        Err(empty_err) => format!("{err}; clearing the clipboard also failed: {empty_err}"),
     })
 }
 
