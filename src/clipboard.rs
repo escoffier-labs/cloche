@@ -15,7 +15,13 @@ pub fn copy_png(path: &Path) -> Result<(), String> {
         let bytes =
             std::fs::read(path).map_err(|err| format!("cannot read {}: {err}", path.display()))?;
         let (width, height, rgba) = png_to_rgba(&bytes)?;
-        let png = encode_png(width, height, &rgba)?;
+        // Callers pass PNG files, so reuse the bytes as-is for the PNG format
+        // and only re-encode if something else was handed in.
+        let png = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+            bytes
+        } else {
+            encode_png(width, height, &rgba)?
+        };
         let dibv5 = rgba_to_dibv5(width, height, &rgba)?;
         // Windows keeps clipboard data after the owning process exits, so no
         // detached server is needed (unlike X11).
