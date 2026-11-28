@@ -989,3 +989,48 @@ a tenth of the file size.
 - Not done: gradients that are shallower than anything in the current palettes
   could still band at 1.2. If one is added, check it with the box-mean metric
   before assuming 1.2 holds.
+
+## Windows clipboard images excluded from History and cloud sync (2026-11-27)
+
+- Decision: on Windows, `copy_png` no longer uses arboard. It opens the
+  clipboard once with `clipboard-win`, empties it, writes the two exclusion
+  markers (`CanIncludeInClipboardHistory`, `CanUploadToCloudClipboard`, each a
+  DWORD of 0 registered by name), then the registered `PNG` format, then
+  `CF_DIBV5`, and closes. Markers come first (Daybreak Blue review on #60): if
+  the process dies mid-session, any image data Windows already holds is
+  covered. Paste ignores these formats, so preference order is unchanged. Always on, no flag. arboard stays the Linux
+  path and its Cargo target section is now `cfg(target_os = "linux")`.
+- Why arboard could not stay: `arboard::Set::image` (3.6.1,
+  `src/platform/windows.rs`) empties the clipboard, writes `PNG` and `CF_DIBV5`,
+  and returns, closing the clipboard. It never calls `add_clipboard_exclusions`,
+  which only the text, HTML and file-list paths use, and its `exclude_from_*`
+  setters are therefore no-ops for images. Setting the markers after it returns
+  would need a second open, which breaks the same-session rule below.
+- Same-session rule (Microsoft docs): the formats must be placed on the
+  clipboard alongside the content they describe, while it is still open. See
+  <https://learn.microsoft.com/en-us/windows/win32/dataxchg/clipboard-formats#cloud-clipboard-and-clipboard-history-formats>
+  and <https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setclipboarddata>
+  (an `OpenClipboard(NULL)` plus `EmptyClipboard` leaves a NULL owner, so a later
+  separate session cannot rely on `SetClipboardData`). The sequence here mirrors
+  arboard's own text path, which opens with a NULL owner and sets the markers
+  after the data in one session. `ExcludeClipboardContentFromMonitorProcessing`
+  is deliberately not set: it hides the content from every clipboard manager,
+  not just History and cloud sync.
+- Fail closed: if any write after the initial empty fails (the `PNG` format,
+  `CF_DIBV5`, or either marker), the clipboard is emptied again and the copy
+  returns an error, which the capture contract turns into a
+  warning. An image with unknown History exposure is not left behind.
+- Byte layout is built in pure functions so tests never open a clipboard:
+  `rgba_to_dibv5` writes a 124-byte `BITMAPV5HEADER` (`BI_BITFIELDS`, sRGB,
+  bottom-up rows, BGRA pixels, as arboard did), the card's own PNG bytes are reused
+  for the `PNG` format (`encode_png` only runs for non-PNG input), and the exclusion names and DWORD payload are constants checked
+  by tests.
+- Dependency accepted (maintainer decision): `clipboard-win` becomes a direct
+  Windows-only dependency, `default-features = false`, no features. It was
+  already in `Cargo.lock` at 5.4.1 through arboard, so the lock file gains only
+  the direct edge. No `windows-sys` direct dependency: the DIB header is
+  assembled as bytes. The alternative of hand-rolling the Win32 clipboard calls
+  would mean unsafe FFI and `windows-sys` for no gain.
+- Not verified on a real Windows desktop: that Win+V omits the image and that
+  the card still pastes into Paint, Word and browsers. CI (windows-latest)
+  compiles and runs the unit tests only.

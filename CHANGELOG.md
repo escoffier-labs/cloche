@@ -84,6 +84,13 @@ All notable changes to this project are documented here. The format follows
   before (every channel moves by at most 2 levels; layout and colors are
   unchanged), and the card file is about 11% smaller on a sample of real
   captures. All five families now read one shared `polish::GRAIN_STRENGTH`.
+- **Windows clipboard images are excluded from Clipboard History and cloud
+  clipboard sync.** `--clipboard` now writes the PNG and `CF_DIBV5` formats and
+  the `CanIncludeInClipboardHistory` and `CanUploadToCloudClipboard` opt-out
+  markers in one clipboard session, so Win+V and other devices never see the
+  card. Always on, no flag. arboard is now Linux-only; Windows uses
+  `clipboard-win` directly. If a marker cannot be set the clipboard is emptied
+  and the copy is reported as a warning instead of leaving an unmarked image.
 - **BREAKING: capture JSON field `outputDir` is now `outDir`**, matching the
   flat `--out-dir` and gallery semantics (it is not a per-shot folder). Scripts
   that read `outputDir` from `capture` output must switch to `outDir`. Reading
