@@ -16,10 +16,9 @@ use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
+use crate::polish::GRAIN_STRENGTH;
 use crate::polish::PresentationStyle;
 
-/// Matches the gradient and space backdrops so film feel stays consistent.
-const GRAIN_STRENGTH: f32 = 2.4;
 /// Motif cells are sized against this so a pattern looks the same density on a
 /// thumbnail and on a full card.
 const REFERENCE_SIZE: f32 = 900.0;

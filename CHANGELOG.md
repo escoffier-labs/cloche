@@ -77,6 +77,13 @@ All notable changes to this project are documented here. The format follows
   was exposed by AT-SPI." warning and up to 3 seconds. The `text` object keeps its shape
   (`available: false`, `path: null`, `bytes: 0`, `source: null`) and no warning
   is added. `active`, `window`, and `screen` are unchanged.
+- **Backdrop grain is half as strong (2.4 to 1.2), so cards are about 11%
+  smaller.** The per-pixel grain on every backdrop family is what PNG
+  compresses worst, and it only has to be strong enough to hide gradient
+  banding. A given `--style-seed` now renders a subtly smoother backdrop than
+  before (every channel moves by at most 2 levels; layout and colors are
+  unchanged), and the card file is about 11% smaller on a sample of real
+  captures. All five families now read one shared `polish::GRAIN_STRENGTH`.
 - **BREAKING: capture JSON field `outputDir` is now `outDir`**, matching the
   flat `--out-dir` and gallery semantics (it is not a per-shot folder). Scripts
   that read `outputDir` from `capture` output must switch to `outDir`. Reading
