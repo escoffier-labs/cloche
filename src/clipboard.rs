@@ -230,25 +230,28 @@ fn write_image_private(png: &[u8], dibv5: &[u8]) -> Result<(), String> {
         |err: clipboard_win::ErrorCode| format!("clipboard image write failed: {err}");
 
     raw::empty().map_err(write_error)?;
-    // Order matters: some programs take the first format available, and PNG has
-    // better compatibility than a DIB, so it goes first.
-    let png_format = register_format("PNG").ok_or("cannot register the PNG clipboard format")?;
-    raw::set_without_clear(png_format.get(), png).map_err(write_error)?;
-    raw::set_without_clear(formats::CF_DIBV5, dibv5).map_err(write_error)?;
-
-    for name in EXCLUSION_FORMATS {
-        let marked = register_format(name)
-            .ok_or_else(|| format!("cannot register the {name} clipboard format"))
-            .and_then(|format| {
-                raw::set_without_clear(format.get(), &EXCLUSION_PAYLOAD)
-                    .map_err(|err| format!("cannot set {name}: {err}"))
-            });
-        if let Err(err) = marked {
-            let _ = raw::empty();
-            return Err(format!("clipboard history exclusion failed: {err}"));
+    // Everything after the empty runs inside one closure so any failure, at
+    // any step, empties the clipboard again. An image is never left on the
+    // clipboard without both exclusion markers.
+    let write_all = || -> Result<(), String> {
+        // Order matters: some programs take the first format available, and
+        // PNG has better compatibility than a DIB, so it goes first.
+        let png_format =
+            register_format("PNG").ok_or("cannot register the PNG clipboard format")?;
+        raw::set_without_clear(png_format.get(), png).map_err(write_error)?;
+        raw::set_without_clear(formats::CF_DIBV5, dibv5).map_err(write_error)?;
+        for name in EXCLUSION_FORMATS {
+            let format = register_format(name)
+                .ok_or_else(|| format!("cannot register the {name} clipboard format"))?;
+            raw::set_without_clear(format.get(), &EXCLUSION_PAYLOAD).map_err(|err| {
+                format!("clipboard history exclusion failed: cannot set {name}: {err}")
+            })?;
         }
-    }
-    Ok(())
+        Ok(())
+    };
+    write_all().inspect_err(|_| {
+        let _ = raw::empty();
+    })
 }
 
 /// Own the X11 clipboard until another application replaces its contents.
