@@ -234,12 +234,9 @@ fn write_image_private(png: &[u8], dibv5: &[u8]) -> Result<(), String> {
     // any step, empties the clipboard again. An image is never left on the
     // clipboard without both exclusion markers.
     let write_all = || -> Result<(), String> {
-        // Order matters: some programs take the first format available, and
-        // PNG has better compatibility than a DIB, so it goes first.
-        let png_format =
-            register_format("PNG").ok_or("cannot register the PNG clipboard format")?;
-        raw::set_without_clear(png_format.get(), png).map_err(write_error)?;
-        raw::set_without_clear(formats::CF_DIBV5, dibv5).map_err(write_error)?;
+        // Markers go first, so if the process dies mid-session any image data
+        // already handed to Windows is covered. Apps ignore these formats when
+        // pasting, so they do not affect format preference.
         for name in EXCLUSION_FORMATS {
             let format = register_format(name)
                 .ok_or_else(|| format!("cannot register the {name} clipboard format"))?;
@@ -247,6 +244,12 @@ fn write_image_private(png: &[u8], dibv5: &[u8]) -> Result<(), String> {
                 format!("clipboard history exclusion failed: cannot set {name}: {err}")
             })?;
         }
+        // Some programs take the first image format available, and PNG has
+        // better compatibility than a DIB, so it goes before CF_DIBV5.
+        let png_format =
+            register_format("PNG").ok_or("cannot register the PNG clipboard format")?;
+        raw::set_without_clear(png_format.get(), png).map_err(write_error)?;
+        raw::set_without_clear(formats::CF_DIBV5, dibv5).map_err(write_error)?;
         Ok(())
     };
     write_all().map_err(|err| match raw::empty() {

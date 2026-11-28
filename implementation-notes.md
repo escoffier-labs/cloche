@@ -993,10 +993,12 @@ a tenth of the file size.
 ## Windows clipboard images excluded from History and cloud sync (2026-11-27)
 
 - Decision: on Windows, `copy_png` no longer uses arboard. It opens the
-  clipboard once with `clipboard-win`, empties it, writes the registered `PNG`
-  format, then `CF_DIBV5`, then the two exclusion markers
-  (`CanIncludeInClipboardHistory`, `CanUploadToCloudClipboard`, each a DWORD of
-  0 registered by name), and closes. Always on, no flag. arboard stays the Linux
+  clipboard once with `clipboard-win`, empties it, writes the two exclusion
+  markers (`CanIncludeInClipboardHistory`, `CanUploadToCloudClipboard`, each a
+  DWORD of 0 registered by name), then the registered `PNG` format, then
+  `CF_DIBV5`, and closes. Markers come first (Daybreak Blue review on #60): if
+  the process dies mid-session, any image data Windows already holds is
+  covered. Paste ignores these formats, so preference order is unchanged. Always on, no flag. arboard stays the Linux
   path and its Cargo target section is now `cfg(target_os = "linux")`.
 - Why arboard could not stay: `arboard::Set::image` (3.6.1,
   `src/platform/windows.rs`) empties the clipboard, writes `PNG` and `CF_DIBV5`,
