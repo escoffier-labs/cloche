@@ -307,6 +307,11 @@ const listFor = kind => kind === "palette" ? pal() : S.polish[AXES[kind].pool];
 const spaceNames = () => S.options.palettes.filter(p => p.kind === "space").map(p => p.name);
 const effectivePalettes = () => pal().length ? pal() : spaceNames();
 
+// Names reach innerHTML from config.json, which the server loads without
+// validating, so escape anything that is not a fixed literal.
+const esc = v => String(v).replace(/[&<>"']/g,
+  c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+
 function swatchSrc(name, kind){
   // Pattern palettes get a fixed motif so the row compares colour, not weave.
   // Without it every pattern swatch shows whatever the shared seed rolled.
@@ -320,7 +325,7 @@ function swatchSrc(name, kind){
 function swatch(name, kind){
   const b = document.createElement("button");
   b.className = "thumb"; b.dataset.name = name; b.dataset.kind = kind;
-  b.innerHTML = `<span class="shot"><img alt="${name}" loading="lazy" src="/api/backdrop?${swatchSrc(name, kind)}"></span><span class="name">${name}</span>`;
+  b.innerHTML = `<span class="shot"><img alt="${esc(name)}" loading="lazy" src="/api/backdrop?${esc(swatchSrc(name, kind))}"></span><span class="name">${esc(name)}</span>`;
   b.onclick = () => toggle(name, kind);
   if(kind === "palette"){
     // Hovering a backdrop re-draws the sheets below it, so the cross product
@@ -414,7 +419,7 @@ function render(){
   });
 
   const totalPalettes = S.options.palettes.length;
-  el("palCount").innerHTML = p ? `pinned to <b>${S.polish.palette || "nothing"}</b>`
+  el("palCount").innerHTML = p ? `pinned to <b>${esc(S.polish.palette || "nothing")}</b>`
     : pal().length ? `<b>${pal().length}</b> of ${totalPalettes} in rotation`
     : `<b>all ${spaceNames().length}</b> deep-space backdrops in rotation`;
   el("roPalette").textContent = p ? (S.polish.palette || "none")
@@ -423,7 +428,7 @@ function render(){
     const ax = AXES[a], list = S.polish[ax.pool], total = S.options[ax.pool].length;
     const fits = axisOfPalette(S.polish.palette) === a;
     el(ax.count).innerHTML = p
-      ? (fits ? `pinned to <b>${S.polish[ax.pin] || "none"}</b>` : "not used by this backdrop")
+      ? (fits ? `pinned to <b>${esc(S.polish[ax.pin] || "none")}</b>` : "not used by this backdrop")
       : list.length ? `<b>${list.length}</b> of ${total} in rotation` : "seed decides";
     el(ax.ro).textContent = p ? (S.polish[ax.pin] || "seed decides")
       : list.length ? `${list.length} of ${total} on` : "seed decides";
@@ -434,12 +439,12 @@ function render(){
     axisNames.forEach(a => {
       const ax = AXES[a], held = S.polish[ax.pin];
       if(held && axisOfPalette(S.polish.palette) !== a)
-        clashes.push(`<code>${held}</code> is ${ax.noun}, which needs ${ax.need}`);
+        clashes.push(`<code>${esc(held)}</code> is ${ax.noun}, which needs ${ax.need}`);
     });
   }
   el("conflict").hidden = clashes.length === 0;
   if(clashes.length) el("conflict").innerHTML =
-    `<code>${S.polish.palette}</code> is a ${kinds[S.polish.palette]} backdrop, so ${clashes.join(", and ")}. Ignored.`;
+    `<code>${esc(S.polish.palette)}</code> is a ${esc(kinds[S.polish.palette])} backdrop, so ${clashes.join(", and ")}. Ignored.`;
 
   const roll = effectivePalettes();
   el("capPalette").textContent = p ? (S.polish.palette || "—") : (roll[live % (roll.length||1)] || "any");
@@ -447,7 +452,7 @@ function render(){
   const held = heldAxis ? S.polish[AXES[heldAxis].pin] : null;
   el("capScene").textContent = p ? (held || "seed decides") : "rolling";
 
-  const f = s => `<span class="flag">${s}</span>`, v = s => `<span class="val">${s}</span>`;
+  const f = s => `<span class="flag">${s}</span>`, v = s => `<span class="val">${esc(s)}</span>`;
   let cmd;
   if(p){
     cmd = `cloche config set ${f("--mode")} ${v("pinned")}`;
