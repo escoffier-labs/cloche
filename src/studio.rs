@@ -326,7 +326,8 @@ fn newest_capture() -> Option<PathBuf> {
         .and_then(|capture| capture.image.map(|info| info.path))
 }
 
-fn save_body(body: &[u8]) -> Result<(), String> {
+/// Parse and validate a posted preferences body without touching disk.
+fn parse_prefs(body: &[u8]) -> Result<config::PolishPrefs, String> {
     let prefs: config::PolishPrefs =
         serde_json::from_slice(body).map_err(|err| format!("invalid preferences: {err}"))?;
     let known_palette: Vec<&str> = polish::palette_names();
@@ -362,6 +363,11 @@ fn save_body(body: &[u8]) -> Result<(), String> {
             return Err(format!("unknown terrain: {name}"));
         }
     }
+    Ok(prefs)
+}
+
+fn save_body(body: &[u8]) -> Result<(), String> {
+    let prefs = parse_prefs(body)?;
     let path = config::path();
     let (mut stored, _) = config::load_from(&path);
     stored.polish = prefs;
@@ -669,6 +675,103 @@ mod tests {
                 .len(),
             polish::terrain_names().len()
         );
+    }
+
+    #[test]
+    fn state_reports_the_sky_menu_and_both_palette_kinds() {
+        let value = state_value();
+        assert_eq!(
+            value["options"]["skies"].as_array().expect("skies").len(),
+            polish::sky_names().len()
+        );
+        let kinds: Vec<&str> = value["options"]["palettes"]
+            .as_array()
+            .expect("palettes")
+            .iter()
+            .filter_map(|palette| palette["kind"].as_str())
+            .collect();
+        // The page groups palettes by this field; without both kinds it has no
+        // sky or terrain grid to build.
+        assert!(kinds.contains(&"sky"), "no sky palettes in options");
+        assert!(kinds.contains(&"terrain"), "no terrain palettes in options");
+    }
+
+    #[test]
+    fn a_sky_is_ignored_on_a_non_sky_palette() {
+        let style = style_from_query("palette=ember-glow&sky=storm&seed=1");
+        assert_eq!(style.sky, None);
+        let sky = style_from_query("palette=blue-hour&sky=storm&seed=1");
+        assert_eq!(sky.sky, polish::sky_from_name("storm"));
+    }
+
+    #[test]
+    fn sky_and_terrain_backdrops_honor_their_kind() {
+        let storm = backdrop_png("palette=supercell&sky=storm&seed=3&w=24&h=18").expect("png");
+        let aurora = backdrop_png("palette=supercell&sky=aurora&seed=3&w=24&h=18").expect("png");
+        assert_ne!(storm, aurora);
+        let dunes = backdrop_png("palette=mesa&terrain=dunes&seed=3&w=24&h=18").expect("png");
+        let glacier = backdrop_png("palette=mesa&terrain=glacier&seed=3&w=24&h=18").expect("png");
+        assert_ne!(dunes, glacier);
+    }
+
+    #[test]
+    fn sky_and_terrain_prefs_round_trip_through_the_config_file() {
+        // What the page posts: pools in random mode, pins in pinned mode.
+        let body = br#"{"mode":"random","palettes":["blue-hour","mesa"],
+            "skies":["storm","aurora"],"terrains":["dunes","glacier"],
+            "sky":"bolt","terrain":"mesa"}"#;
+        let prefs = parse_prefs(body).expect("valid");
+        assert_eq!(prefs.skies, ["storm", "aurora"]);
+        assert_eq!(prefs.terrains, ["dunes", "glacier"]);
+        assert_eq!(prefs.sky.as_deref(), Some("bolt"));
+        assert_eq!(prefs.terrain.as_deref(), Some("mesa"));
+
+        let dir = std::env::temp_dir().join(format!("cloche-studio-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("config.json");
+        let stored = config::ClocheConfig { polish: prefs };
+        config::save_to(&path, &stored).expect("saved");
+        let (loaded, warnings) = config::load_from(&path);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(loaded, stored);
+    }
+
+    #[test]
+    fn unknown_sky_and_terrain_pins_are_refused() {
+        let err = parse_prefs(br#"{"sky":"hail"}"#).expect_err("rejected");
+        assert!(err.contains("hail"), "{err}");
+        let err = parse_prefs(br#"{"terrain":"tundra"}"#).expect_err("rejected");
+        assert!(err.contains("tundra"), "{err}");
+    }
+
+    #[test]
+    fn the_page_builds_a_grid_for_every_second_axis() {
+        // The page is a static string, so assert the wiring it needs exists:
+        // a palette grid and a kind grid for sky and terrain, each with the
+        // bulk buttons and a pool count.
+        for id in [
+            "gridSky",
+            "gridTerrain",
+            "gridSkyKind",
+            "gridTerrainKind",
+            "skyCount",
+            "terCount",
+            "focusSky",
+            "focusTerrain",
+            "roSky",
+            "roTerrain",
+        ] {
+            assert!(PAGE.contains(&format!("id=\"{id}\"")), "missing #{id}");
+        }
+        for bulk in ["sky-all", "sky-none", "ter-all", "ter-none"] {
+            assert!(
+                PAGE.contains(&format!("data-bulk=\"{bulk}\"")),
+                "missing {bulk}"
+            );
+        }
+        assert!(PAGE.contains("flags: \"--skies\""));
+        assert!(PAGE.contains("flags: \"--terrains\""));
     }
 
     #[test]

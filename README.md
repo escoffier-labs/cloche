@@ -242,10 +242,9 @@ There is no second axis. Gradient palettes are `violet-haze`, `ember-glow`,
 `aurora-teal`, `rose-noir`, `midnight-sky`, `sea-glass`, `peach-dusk`,
 `ink-wash`, and `citrus-noon`.
 
-`cloche studio` shows the cross product for the space, pattern, and gradient
-families: hover a backdrop and the scene or motif sheet redraws on it. The page
-does not list the sky and terrain palettes yet, so set those with `--palette`
-or `cloche config set`.
+`cloche studio` shows the cross product for the space, pattern, sky, and
+terrain families: hover a backdrop and the scene, motif, sky, or terrain sheet
+redraws on it.
 
 ## Backdrop Preferences
 
@@ -315,12 +314,14 @@ cloche studio --port 0     # let the OS pick a port
 cloche studio --print-url  # print the URL as JSON and exit
 ```
 
-A local page showing the space, gradient, and pattern backdrops, and every
-scene and motif, as real renders. Click to switch one in or out of the random
-pool, or switch to Pin one to lock a single backdrop. Changes are written to the
-same `config.json` the CLI reads, and the page shows the equivalent
-`cloche config set` for whatever you have selected. Sky and terrain backdrops
-are not on the page yet.
+A local page showing the space, gradient, pattern, sky, and terrain backdrops,
+and every scene, motif, sky, and terrain kind, as real renders. Click to switch
+one in or out of the random pool, or switch to Pin one to lock a single
+backdrop. Changes are written to the same `config.json` the CLI reads, and the
+page shows the equivalent `cloche config set` for whatever you have selected.
+Gradient, pattern, sky, and terrain palettes stay out of the random rotation
+until you switch one on; an empty scene, motif, sky, or terrain pool leaves that
+choice to the seed.
 
 The hero preview uses your newest capture, so the page will display whatever you
 last screenshotted. Worth knowing before you screen-share it.
