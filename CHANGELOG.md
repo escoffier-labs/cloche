@@ -71,9 +71,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 - `capture --target region` no longer attempts accessibility text extraction.
-  A region selection has no focused window, so the AT-SPI attempt could not
-  succeed and only added the "No accessible focused text was exposed by AT-SPI."
-  warning and up to 3 seconds. The `text` object keeps its shape
+  A region selection has no window of its own, so any text the AT-SPI attempt
+  found would have come from whichever window had focus, not the selected area.
+  In practice it found nothing and only added the "No accessible focused text
+  was exposed by AT-SPI." warning and up to 3 seconds. The `text` object keeps its shape
   (`available: false`, `path: null`, `bytes: 0`, `source: null`) and no warning
   is added. `active`, `window`, and `screen` are unchanged.
 - **BREAKING: capture JSON field `outputDir` is now `outDir`**, matching the

@@ -915,9 +915,11 @@ of tests. It is now split with no behavior change:
 - Evidence: on the maintainer's machine, 2,399 `capture --target region` grabs
   (Flameshot) over five months produced extracted text 0 times, and 2,278 of
   them carry the warning "No accessible focused text was exposed by AT-SPI."
-  Both extractors read the focused element of the focused window, and a region
-  selection has no window behind it, so the attempt cannot succeed. It only
-  adds a warning and up to the 3 second `timeout` wrapper.
+  Both extractors read the focused element of the focused window. A region
+  selection has no window of its own, so any text they found would belong to
+  whichever window had focus, not to the selected area (AT-SPI walks every
+  desktop for a focused element). In practice the attempt found nothing and only
+  added a warning and up to the 3 second `timeout` wrapper.
 - Decision: `text::should_extract_text(target)` returns false for `Region` only,
   and `postprocess_capture` skips the extractor for it. The `text` object is the
   same `TextInfo::default()` that a failed extraction returns (`available: false`,

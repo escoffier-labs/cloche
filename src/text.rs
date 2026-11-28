@@ -3,10 +3,11 @@ use crate::contract::TextInfo;
 use crate::util;
 use std::path::Path;
 
-/// Whether the post-capture accessibility text attempt can succeed for this
+/// Whether the post-capture accessibility text attempt is useful for this
 /// target. Both extractors (AT-SPI, UI Automation) read the focused element of
-/// the focused window. A region selection has no window behind it, so the
-/// attempt cannot return text and only adds a warning and latency.
+/// the focused window. A region selection has no window of its own, so any text
+/// found would belong to whatever window had focus, not to the selected area.
+/// In practice it found nothing and only added a warning and latency.
 pub fn should_extract_text(target: CaptureTarget) -> bool {
     !matches!(target, CaptureTarget::Region)
 }
