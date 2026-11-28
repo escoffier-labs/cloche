@@ -20,7 +20,7 @@ Cloche is a screenshot tool. A Shot is a still capture with raw and presentation
 - Region capture (`--target region`) through Flameshot or ImageMagick `import` on X11. It needs a human at the desk, so it is not for headless agents.
 - Clipboard copy for finished cards and raw shots (`--clipboard`): `wl-copy` on Wayland, a detached arboard server on X11, and an in-process arboard write on Windows.
 - Five procedural backdrop families (gradient, space, pattern, sky, terrain), chosen with `--palette`, plus `--scene`, `--motif`, `--sky`, or `--terrain` for the families that have a second axis (gradient has none). `cloche config options` lists the live catalog.
-- Persisted backdrop preferences (`cloche config`) and `cloche studio`, a local page for picking backdrops by eye. Sky and terrain are not on the studio page yet.
+- Persisted backdrop preferences (`cloche config`) and `cloche studio`, a local page for picking backdrops by eye, covering all five backdrop families.
 - `cloche setup` onboarding: hotkey install, MCP registration for supported agent clients, and a verify step.
 - Optional stdio MCP server (`cloche mcp`) wrapping the CLI contract, with the card or raw frame returned as an MCP image content block.
 - Compatibility binary and MCP path through `appshots`.
@@ -62,6 +62,5 @@ The next major item. Wayland has no generic way to read another app's window, so
 
 ## Later
 
-- Sky and terrain palettes on the `cloche studio` page.
 - Wayland compositor-specific active-window support where safe and possible, for compositors the portal path does not cover.
 - Named style presets beyond the persisted preferences in `cloche config`.

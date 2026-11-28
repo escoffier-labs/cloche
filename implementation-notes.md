@@ -1034,3 +1034,40 @@ a tenth of the file size.
 - Not verified on a real Windows desktop: that Win+V omits the image and that
   the card still pastes into Paint, Word and browsers. CI (windows-latest)
   compiles and runs the unit tests only.
+
+## Sky and terrain on the studio page (2026-11-27)
+
+The server side was already complete: `/api/state` returned `skies` and
+`terrains`, `save_body` validated them, and `style_from_query` honored `sky` and
+`terrain` on sky and terrain palettes. The page was the only gap, plus the
+palette catalog already carried `sky` and `terrain` kinds that no grid used.
+
+- **One table for the four second axes.** `studio.html` now has an `AXES` table
+  (palette kind, pool key, pin key, flag names, readout and count ids) instead of
+  a fourth and fifth copy of the scene and motif branches. Scene and motif
+  behavior is unchanged; the table is what keeps the pinned, pool, clash-note,
+  and terminal-command paths in step. The comment there says to add an entry, not
+  a layer, if a sixth family appears.
+- **Sky and terrain palettes stay out of the default random rotation.** That is
+  `polish::style_from_seed_in_pool`'s rule (space only unless named), so the
+  page shows them the same way as gradient and pattern: off until switched on,
+  with the same dead-note wording.
+- **Palette swatches use the seed's own kind.** Pattern swatches pin `plaid` so
+  the row compares colour, not weave. Sky and terrain palette swatches do not pin
+  a kind: the shared fixed seed already rolls the same kind for every palette, so
+  the row compares colour without inventing a pairing between palette and kind.
+- **Second-axis sheets focus on the first palette of their kind** (`blue-hour`,
+  `dunes`), mirroring how scenes and motifs start on the first space and pattern
+  palette.
+- **`save_body` split into `parse_prefs` plus the write.** The validation is
+  unchanged. The split lets a test round-trip sky and terrain pools through
+  `config::save_to` and `load_from` on a temp file without touching the real
+  config path or mutating process environment.
+- **Existing bug fixed on the way:** `render()` removed `on`, `off`, `pinned`,
+  and `dead` but never `auto`, so a swatch kept its "auto" class (dimmed image,
+  "·auto" suffix) after the pool stopped being empty. It now clears `auto` too.
+- **No JS test harness exists.** The repo has no HTML or JS checks beyond Rust
+  tests that assert on the embedded page string, so the new page test does the
+  same (grid ids, bulk buttons, flag names). The interaction was also checked by
+  hand in headless Chrome: pool toggles, hover focus, pinned mode, clash note,
+  and the saved `config.json`.

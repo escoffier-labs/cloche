@@ -7,6 +7,15 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Sky and terrain on the `cloche studio` page.** The sky and terrain palettes
+  join the backdrop grid as their own groups, and two new sheets, Skies
+  (`--sky`) and Terrains (`--terrain`), show every condition and landform as
+  real renders. They behave like the scene and motif sheets: hover a sky or
+  terrain backdrop to redraw the sheet on it, click to switch a kind in or out of
+  the random pool, or pin one in Pin one mode. The readout, the equivalent
+  `cloche config set` command, and saving to `config.json` cover `--sky`,
+  `--skies`, `--terrain`, and `--terrains`. Selected swatches also lose their
+  stale "auto" tag.
 - **Five backdrop families.** Cards used to choose between gradients and
   deep-space scenes. They now come from gradient, space, pattern, sky, or
   terrain, each drawn from the style seed at render time with no stored images.
@@ -44,13 +53,13 @@ All notable changes to this project are documented here. The format follows
   motif, sky, and terrain. `cloche config show` prints the effective
   preferences, and `cloche schema --for config` emits the JSON contract.
 - **`cloche studio`**, a local page for picking backdrops by eye instead of by
-  name. Space, gradient, and pattern palettes and every scene and motif are
-  shown as real renders. Clicking toggles a backdrop in or out of the random pool
-  (or pins it), and hovering one redraws the scene or motif sheet on it. Every
+  name. Space, gradient, pattern, sky, and terrain palettes and every scene,
+  motif, sky, and terrain kind are shown as real renders. Clicking toggles a backdrop in or out of the random pool
+  (or pins it), and hovering one redraws the scene, motif, sky, or terrain sheet on it. Every
   change is written to the same `config.json` the CLI reads. Binds to
   `127.0.0.1` with no auth by design. `--host` widens it, `--port 0` takes any
-  free port, and `--print-url` prints the URL as JSON without serving. Sky and
-  terrain are not on the page yet. No new dependencies: the HTTP handling is
+  free port, and `--print-url` prints the URL as JSON without serving. No new
+  dependencies: the HTTP handling is
   hand-rolled on `std::net`.
 - **`capture --clipboard` on Windows.** The PNG is decoded to RGBA and written
   with arboard in-process. Failures remain warnings. `arboard` is now a Linux
