@@ -25,8 +25,11 @@ const AMBIENT_SHADOW_ALPHA: u8 = 52;
 const KEY_SHADOW_ALPHA: u8 = 96;
 const RIM_STRENGTH: f32 = 0.24;
 const STREAK_STRENGTH: f32 = 0.09;
-/// Amplitude of the per-pixel backdrop grain, shared by all five backdrop
-/// families so film feel stays consistent. It exists to break up gradient
+/// Multiplier for the per-pixel backdrop grain, shared by all five backdrop
+/// families. It is not one absolute amplitude: the gradient and space noise
+/// helpers return values in [-1, 1], while sky, terrain and pattern return
+/// [-0.5, 0.5], so those three get half the dither (about 0.6 levels). Changing
+/// this moves every family by the same factor. The grain breaks up gradient
 /// banding, but it is also most of a card's PNG size, so keep it as low as the
 /// gradients still hold: 1.2 halved it from 2.4 (see implementation-notes.md).
 pub(crate) const GRAIN_STRENGTH: f32 = 1.2;
