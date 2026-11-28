@@ -20,8 +20,9 @@
 //!
 //! All drawing is hand-rolled on `image` + `rand` (no new dependencies, per
 //! repo policy). The helpers (`to_f32`, `mix3`, `smoothstep`, `quantize`,
-//! grain, `warped_fbm`) are private copies kept here on purpose, matching the
-//! convention in `polish.rs`, `space.rs`, `pattern.rs`, and `sky.rs`.
+//! `grain_noise`, `warped_fbm`) are private copies kept here on purpose,
+//! matching the convention in `polish.rs`, `space.rs`, `pattern.rs`, and
+//! `sky.rs`. Only the grain amplitude is shared, as `polish::GRAIN_STRENGTH`.
 
 use image::ImageBuffer;
 use image::Rgba;
@@ -30,16 +31,13 @@ use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
+use crate::polish::GRAIN_STRENGTH;
 use crate::polish::PresentationStyle;
 
 /// Decorrelates the terrain RNG from the style RNG, which already consumed
 /// the raw seed in `style_from_seed`. Distinct from the sky salt so the two
 /// families never share a noise stream.
 const TERRAIN_SEED_SALT: u64 = 0x5452_4E20_4C41_4E44; // "TRN LAND"
-
-/// Matches the gradient, space, pattern, and sky backdrops so film feel stays
-/// consistent across all five families.
-const GRAIN_STRENGTH: f32 = 2.4;
 
 /// Ridge and dune silhouettes are fbm; five octaves is where the silhouettes
 /// stop reading as noise and start reading as landform.

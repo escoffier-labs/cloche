@@ -933,3 +933,59 @@ of tests. It is now split with no behavior change:
 - Not changed: `screen` still attempts extraction even though it has no single
   target window. The evidence covers region only, and the foreground window at
   capture time can still expose text.
+
+## Halve the backdrop grain (2026-11-27)
+
+The maintainer took up the decision left open in "Smaller card PNGs": backdrop
+grain goes from 2.4 to 1.2, not to 0. The grain is what PNG compresses worst and
+it exists only to hide gradient banding, so 1.2 keeps the dither and drops about
+a tenth of the file size.
+
+- Change: one shared `pub(crate) const GRAIN_STRENGTH: f32 = 1.2` in
+  `polish.rs`. `space.rs`, `sky.rs`, `pattern.rs` and `terrain.rs` each held
+  their own private `2.4` copy (all five were equal, with comments saying they
+  match each other); they now `use crate::polish::GRAIN_STRENGTH`, so a future
+  change is one edit instead of five. The `grain_noise`/`hash_noise` helpers stay
+  private per module as before. `--style-seed` reproducibility holds, but a seed
+  now renders slightly different pixels than before this change (same
+  palette, scene and layout, only the grain amplitude differs).
+- Tests: no test pinned pixel values or hashes, so none needed new expectations
+  (261 tests pass unchanged).
+- Size, 50 real captures (every 46th of 2,292 sorted raws, `--style-seed`
+  1001..1050, default random palette, lossless encoder from the previous
+  section, release builds of origin/master vs this change):
+
+  | | before (2.4) | after (1.2) | delta |
+  |---|---|---|---|
+  | total bytes | 12,818,693 | 11,423,031 | -10.9% |
+  | median card | 149,295 | 131,937 | -11.6% |
+  | p90 card | 545,361 | 495,992 | -9.1% |
+  | max card | 1,061,328 | 926,586 | -12.7% |
+
+  Same dimensions on all 50 pairs; the largest per-channel difference between
+  before and after is 2 levels (about 27% of pixels change at all), which is the
+  grain amplitude and nothing else. This matches the earlier 99-capture
+  estimate of -10.6%.
+- Banding check: a 2400x1500 flat input polished with `--style-seed 4242` on
+  nine smooth palettes (five gradient: `violet-haze`, `ember-glow`, `ink-wash`,
+  `sea-glass`, `peach-dusk`; four sky: `blue-hour`, `golden-hour`, `cirrus-blue`,
+  `alpenglow`). Measured on backdrop-only strips (the top and left margins),
+  skipping any line or box that touches 0 or 255 so a clamped channel cannot
+  fake a long run. Mean over the nine palettes:
+
+  | grain | longest identical run per line, p90 / mean (px) | 9x9 box means within 0.1 of an integer |
+  |---|---|---|
+  | 0 (reference) | 572 / 263 | 50.2% |
+  | 1.2 (this change) | 58 / 31 | 20.5% |
+  | 2.4 (before) | 12 / 7.7 | 22.7% |
+
+  A fully dithered field puts about 20% of box means near an integer; a banded
+  one puts far more there. 1.2 sits at the dithered value (20.5%) while grain 0
+  does not (50.2%). Runs of identical values are longer at 1.2 than at 2.4,
+  which is expected with less noise, but they stay tens of pixels long against
+  hundreds with no grain. The worst palette is `cirrus-blue` (mean run 89 px,
+  p90 132, box-mean metric 21.0%, i.e. still dithered). A 12x contrast stretch
+  of its top margin shows contour edges at grain 0 and none at 1.2.
+- Not done: gradients that are shallower than anything in the current palettes
+  could still band at 1.2. If one is added, check it with the box-mean metric
+  before assuming 1.2 holds.

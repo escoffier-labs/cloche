@@ -25,15 +25,12 @@ use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
+use crate::polish::GRAIN_STRENGTH;
 use crate::polish::PresentationStyle;
 
 /// Decorrelates the sky RNG from the style RNG, which already consumed the raw
 /// seed in `style_from_seed`.
 const SKY_SEED_SALT: u64 = 0x534B_5920_4C41_5952; // "SKY LAYR"
-
-/// Matches the gradient, space, and pattern backdrops so film feel stays
-/// consistent across all four families.
-const GRAIN_STRENGTH: f32 = 2.4;
 
 /// Cloud structure is fbm; five octaves is where the turret detail stops
 /// reading as noise and starts reading as cloud.

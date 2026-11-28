@@ -22,6 +22,7 @@ use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
+use crate::polish::GRAIN_STRENGTH;
 use crate::polish::PresentationStyle;
 
 /// Decorrelates the scene RNG from the style RNG, which already consumed the
@@ -29,8 +30,6 @@ use crate::polish::PresentationStyle;
 const SCENE_SEED_SALT: u64 = 0x5354_4152_4649_454C; // "STARFIEL"
 
 const NEBULA_OCTAVES: u32 = 5;
-/// Grain matches the gradient backdrop's strength so film feel is consistent.
-const GRAIN_STRENGTH: f32 = 2.4;
 
 /// A specific scene look the caller can pin instead of the seed's random pick.
 /// The seed still drives every free parameter (placement, noise, palette
