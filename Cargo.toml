@@ -41,12 +41,18 @@ serde = { version = "1.0", default-features = false, features = ["std", "derive"
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 thiserror = { version = "2.0", default-features = false, features = ["std"] }
 
-# Linux serves the X11 clipboard through a detached process. Windows writes the
-# clipboard in-process (the data outlives the process). `image-data` is the only
-# feature enabled on both: it provides ImageData/set_image, and on Windows it
-# pulls windows-sys and clipboard-win, which were already in Cargo.lock.
-[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+# Linux serves the X11 clipboard through a detached process, so arboard stays
+# Linux-only. Windows needs the Clipboard History and cloud sync opt-out formats
+# to be set in the same open/empty session that writes the image, and arboard's
+# image path closes the clipboard first and never adds them. clipboard-win is
+# the low-level crate arboard already used on Windows (same locked version, so
+# Cargo.lock gains only this direct edge). It has no default features and none
+# are needed: `std` only adds an Error impl and `monitor` pulls windows-win.
+[target.'cfg(target_os = "linux")'.dependencies]
 arboard = { version = "3.6", default-features = false, features = ["image-data"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+clipboard-win = { version = "5.4", default-features = false }
 
 [dev-dependencies]
 tempfile = "3.23"

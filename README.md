@@ -409,7 +409,7 @@ Capture exits with `0` only when a raw image was written. Text extraction and pr
 
 Use `--presentation raw`, `--presentation card`, or `--presentation both` to control output image generation. Use `--style-seed <number>` to reproduce a randomized card style exactly. Use `--detail high|low|auto|original` for the Codex `localImage` detail hint stored in metadata.
 
-`--target region` opens an interactive selector (Flameshot when available, ImageMagick `import` drag-select on X11): drag a rectangle and the shot is taken the moment you release. Add `--clipboard` to copy the finished card straight to the clipboard (wl-copy on Wayland, a detached Cloche arboard server on X11, an in-process arboard write on Windows). X11 clipboard copy waits up to 3 seconds for ownership and rejects input PNG files above 15 MiB. The flag records a warning and the capture still succeeds. Region capture needs a human at the desk. It is not for headless agents. Region select itself is also not yet supported on Windows: use Win+Shift+S, save the file, then `cloche polish <file>`.
+`--target region` opens an interactive selector (Flameshot when available, ImageMagick `import` drag-select on X11): drag a rectangle and the shot is taken the moment you release. Add `--clipboard` to copy the finished card straight to the clipboard (wl-copy on Wayland, a detached Cloche arboard server on X11, an in-process clipboard-win write on Windows). X11 clipboard copy waits up to 3 seconds for ownership and rejects input PNG files above 15 MiB. The flag records a warning and the capture still succeeds. On Windows the image is marked so it stays out of Clipboard History (Win+V) and cloud clipboard sync. Region capture needs a human at the desk. It is not for headless agents. Region select itself is also not yet supported on Windows: use Win+Shift+S, save the file, then `cloche polish <file>`.
 
 ## Hotkey Workflow
 
@@ -546,7 +546,7 @@ tr '\0' '\n' </proc/$(pgrep -u "$(id -u)" -n gnome-shell)/environ | grep -E '^(D
 - Active/window capture uses Win32 foreground-window and top-level-window metadata, then captures the target window with `PrintWindow` so covered windows are not polluted by whatever is on top. It falls back to `.NET CopyFromScreen` if `PrintWindow` is unavailable for that window.
 - Screen capture uses the Windows virtual screen.
 - Text extraction is best-effort through UI Automation. Region capture is not supported on Windows, so the region skip never applies here.
-- `--clipboard` copies the card as an image through arboard, in-process (Windows keeps the data after Cloche exits). Failures are warnings only; capture still succeeds.
+- `--clipboard` copies the card as an image (arboard on Linux, `clipboard-win` on Windows, in-process; Windows keeps the data after Cloche exits). On Windows the image is excluded from Clipboard History and cloud clipboard sync. Failures are warnings only; capture still succeeds.
 - Capture must run in a logged-in interactive desktop session. Plain OpenSSH sessions can build and run `doctor`, but Windows blocks screen capture from the non-interactive SSH service session.
 
 ## Gallery HTML Export

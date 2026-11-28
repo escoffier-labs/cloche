@@ -1,5 +1,5 @@
 //! Copy capture images using wl-copy on Wayland, a detached arboard server on
-//! X11, or an in-process arboard write on Windows. Clipboard owners never
+//! X11, or an in-process clipboard-win write on Windows. Clipboard owners never
 //! inherit the caller's output pipes.
 
 use std::path::Path;
@@ -15,18 +15,11 @@ pub fn copy_png(path: &Path) -> Result<(), String> {
         let bytes =
             std::fs::read(path).map_err(|err| format!("cannot read {}: {err}", path.display()))?;
         let (width, height, rgba) = png_to_rgba(&bytes)?;
-        let data = arboard::ImageData {
-            width,
-            height,
-            bytes: std::borrow::Cow::Owned(rgba),
-        };
+        let png = encode_png(width, height, &rgba)?;
+        let dibv5 = rgba_to_dibv5(width, height, &rgba)?;
         // Windows keeps clipboard data after the owning process exits, so no
         // detached server is needed (unlike X11).
-        let mut clipboard =
-            arboard::Clipboard::new().map_err(|err| format!("clipboard unavailable: {err}"))?;
-        clipboard
-            .set_image(data)
-            .map_err(|err| format!("clipboard image write failed: {err}"))
+        write_image_private(&png, &dibv5)
     }
     #[cfg(target_os = "linux")]
     {
@@ -112,6 +105,144 @@ fn png_to_rgba(bytes: &[u8]) -> Result<(usize, usize, Vec<u8>), String> {
         .into_rgba8();
     let (width, height) = (image.width() as usize, image.height() as usize);
     Ok((width, height, image.into_raw()))
+}
+
+/// Clipboard formats Windows reads to decide whether an item may enter
+/// Clipboard History and cloud clipboard sync. Registered by name, each holds a
+/// DWORD of 0 to opt the item out.
+/// <https://learn.microsoft.com/en-us/windows/win32/dataxchg/clipboard-formats#cloud-clipboard-and-clipboard-history-formats>
+#[cfg(any(target_os = "windows", test))]
+const EXCLUSION_FORMATS: [&str; 2] = ["CanIncludeInClipboardHistory", "CanUploadToCloudClipboard"];
+
+/// The DWORD 0 payload that each exclusion format carries.
+#[cfg(any(target_os = "windows", test))]
+const EXCLUSION_PAYLOAD: [u8; 4] = 0u32.to_le_bytes();
+
+#[cfg(any(target_os = "windows", test))]
+const BITMAPV5HEADER_SIZE: usize = 124;
+
+/// Re-encode RGBA8 pixels as PNG for the registered "PNG" clipboard format.
+#[cfg(any(target_os = "windows", test))]
+fn encode_png(width: usize, height: usize, rgba: &[u8]) -> Result<Vec<u8>, String> {
+    let too_large = |_| "image dimensions too large for the clipboard".to_string();
+    let image = image::RgbaImage::from_raw(
+        u32::try_from(width).map_err(too_large)?,
+        u32::try_from(height).map_err(too_large)?,
+        rgba.to_vec(),
+    )
+    .ok_or("pixel buffer does not match the image dimensions")?;
+    let mut out = std::io::Cursor::new(Vec::new());
+    image
+        .write_to(&mut out, image::ImageFormat::Png)
+        .map_err(|err| format!("cannot encode image for clipboard: {err}"))?;
+    Ok(out.into_inner())
+}
+
+/// Build a CF_DIBV5 payload (BITMAPV5HEADER plus 32-bit BGRA pixels, bottom-up)
+/// from RGBA8 pixels, matching what arboard wrote. Rows are stored bottom-up
+/// because MS Word and WordPad cannot paste a top-down DIB (negative height).
+/// Pure so it can be unit tested without touching a clipboard.
+#[cfg(any(target_os = "windows", test))]
+fn rgba_to_dibv5(width: usize, height: usize, rgba: &[u8]) -> Result<Vec<u8>, String> {
+    const LCS_SRGB: u32 = 0x7352_4742; // 'sRGB'
+    const LCS_GM_IMAGES: u32 = 4;
+    const BI_BITFIELDS: u32 = 3;
+
+    let size_error = || "image dimensions too large for the clipboard".to_string();
+    let pixel_bytes = width
+        .checked_mul(height)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or_else(size_error)?;
+    if width == 0 || height == 0 || rgba.len() != pixel_bytes {
+        return Err("pixel buffer does not match the image dimensions".to_string());
+    }
+    let size_image = u32::try_from(pixel_bytes).map_err(|_| size_error())?;
+    let width_field = i32::try_from(width).map_err(|_| size_error())?;
+    let height_field = i32::try_from(height).map_err(|_| size_error())?;
+
+    let mut out = Vec::with_capacity(BITMAPV5HEADER_SIZE + pixel_bytes);
+    let put_u32 = |out: &mut Vec<u8>, value: u32| out.extend_from_slice(&value.to_le_bytes());
+    put_u32(&mut out, BITMAPV5HEADER_SIZE as u32); // bV5Size
+    put_u32(&mut out, width_field as u32); // bV5Width
+    put_u32(&mut out, height_field as u32); // bV5Height, positive = bottom-up
+    out.extend_from_slice(&1u16.to_le_bytes()); // bV5Planes
+    out.extend_from_slice(&32u16.to_le_bytes()); // bV5BitCount
+    put_u32(&mut out, BI_BITFIELDS); // bV5Compression
+    put_u32(&mut out, size_image); // bV5SizeImage
+    put_u32(&mut out, 0); // bV5XPelsPerMeter
+    put_u32(&mut out, 0); // bV5YPelsPerMeter
+    put_u32(&mut out, 0); // bV5ClrUsed
+    put_u32(&mut out, 0); // bV5ClrImportant
+    put_u32(&mut out, 0x00ff_0000); // bV5RedMask
+    put_u32(&mut out, 0x0000_ff00); // bV5GreenMask
+    put_u32(&mut out, 0x0000_00ff); // bV5BlueMask
+    put_u32(&mut out, 0xff00_0000); // bV5AlphaMask
+    put_u32(&mut out, LCS_SRGB); // bV5CSType
+    out.extend_from_slice(&[0; 36]); // bV5Endpoints, ignored for LCS_sRGB
+    put_u32(&mut out, 0); // bV5GammaRed
+    put_u32(&mut out, 0); // bV5GammaGreen
+    put_u32(&mut out, 0); // bV5GammaBlue
+    put_u32(&mut out, LCS_GM_IMAGES); // bV5Intent
+    put_u32(&mut out, 0); // bV5ProfileData
+    put_u32(&mut out, 0); // bV5ProfileSize
+    put_u32(&mut out, 0); // bV5Reserved
+    debug_assert_eq!(out.len(), BITMAPV5HEADER_SIZE);
+
+    for row in rgba.chunks_exact(width * 4).rev() {
+        for &[r, g, b, a] in row.as_chunks::<4>().0 {
+            out.extend_from_slice(&[b, g, r, a]);
+        }
+    }
+    Ok(out)
+}
+
+/// Write the image and the history/cloud exclusion markers in one clipboard
+/// session. Microsoft documents the exclusion formats as data placed on the
+/// clipboard alongside the content they describe, so they must be set while the
+/// clipboard is still open from the same open/empty that wrote the image.
+/// arboard cannot do this: its image path closes the clipboard on return and
+/// never adds the markers. If a marker cannot be set, the clipboard is emptied
+/// again so a screenshot never lands in History or the cloud by accident.
+#[cfg(target_os = "windows")]
+fn write_image_private(png: &[u8], dibv5: &[u8]) -> Result<(), String> {
+    use clipboard_win::{formats, raw, register_format};
+
+    // Another process (often a clipboard manager) may hold the clipboard for a
+    // few milliseconds, so retry with a short sleep between attempts.
+    let mut attempts = 0;
+    let _session = loop {
+        match clipboard_win::Clipboard::new() {
+            Ok(session) => break session,
+            Err(err) if attempts >= 10 => return Err(format!("clipboard unavailable: {err}")),
+            Err(_) => {
+                attempts += 1;
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+    };
+    let write_error =
+        |err: clipboard_win::ErrorCode| format!("clipboard image write failed: {err}");
+
+    raw::empty().map_err(write_error)?;
+    // Order matters: some programs take the first format available, and PNG has
+    // better compatibility than a DIB, so it goes first.
+    let png_format = register_format("PNG").ok_or("cannot register the PNG clipboard format")?;
+    raw::set_without_clear(png_format.get(), png).map_err(write_error)?;
+    raw::set_without_clear(formats::CF_DIBV5, dibv5).map_err(write_error)?;
+
+    for name in EXCLUSION_FORMATS {
+        let marked = register_format(name)
+            .ok_or_else(|| format!("cannot register the {name} clipboard format"))
+            .and_then(|format| {
+                raw::set_without_clear(format.get(), &EXCLUSION_PAYLOAD)
+                    .map_err(|err| format!("cannot set {name}: {err}"))
+            });
+        if let Err(err) = marked {
+            let _ = raw::empty();
+            return Err(format!("clipboard history exclusion failed: {err}"));
+        }
+    }
+    Ok(())
 }
 
 /// Own the X11 clipboard until another application replaces its contents.
@@ -310,7 +441,7 @@ mod tests {
         );
     }
 
-    fn encode_png(image: &image::RgbaImage) -> Vec<u8> {
+    fn png_bytes(image: &image::RgbaImage) -> Vec<u8> {
         let mut out = std::io::Cursor::new(Vec::new());
         image.write_to(&mut out, image::ImageFormat::Png).unwrap();
         out.into_inner()
@@ -321,7 +452,7 @@ mod tests {
         let mut image = image::RgbaImage::new(2, 1);
         image.put_pixel(0, 0, image::Rgba([10, 20, 30, 255]));
         image.put_pixel(1, 0, image::Rgba([40, 50, 60, 128]));
-        let (width, height, rgba) = png_to_rgba(&encode_png(&image)).unwrap();
+        let (width, height, rgba) = png_to_rgba(&png_bytes(&image)).unwrap();
         assert_eq!((width, height), (2, 1));
         assert_eq!(rgba, vec![10, 20, 30, 255, 40, 50, 60, 128]);
     }
@@ -340,6 +471,69 @@ mod tests {
     fn png_to_rgba_rejects_non_image_bytes() {
         let err = png_to_rgba(b"not a png").unwrap_err();
         assert!(err.contains("cannot decode image for clipboard"));
+    }
+
+    fn u32_at(bytes: &[u8], offset: usize) -> u32 {
+        u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
+    }
+
+    #[test]
+    fn exclusion_markers_use_the_documented_names_and_a_zero_dword() {
+        assert_eq!(
+            EXCLUSION_FORMATS,
+            ["CanIncludeInClipboardHistory", "CanUploadToCloudClipboard"]
+        );
+        assert_eq!(EXCLUSION_PAYLOAD, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn dibv5_header_matches_the_bitmapv5header_layout() {
+        let dib = rgba_to_dibv5(3, 2, &[0; 24]).unwrap();
+        assert_eq!(dib.len(), BITMAPV5HEADER_SIZE + 24);
+        assert_eq!(u32_at(&dib, 0), 124); // bV5Size
+        assert_eq!(u32_at(&dib, 4), 3); // bV5Width
+        assert_eq!(u32_at(&dib, 8), 2); // bV5Height, positive = bottom-up
+        assert_eq!(&dib[12..14], &1u16.to_le_bytes()); // bV5Planes
+        assert_eq!(&dib[14..16], &32u16.to_le_bytes()); // bV5BitCount
+        assert_eq!(u32_at(&dib, 16), 3); // BI_BITFIELDS
+        assert_eq!(u32_at(&dib, 20), 24); // bV5SizeImage
+        assert_eq!(u32_at(&dib, 40), 0x00ff_0000); // red mask
+        assert_eq!(u32_at(&dib, 44), 0x0000_ff00); // green mask
+        assert_eq!(u32_at(&dib, 48), 0x0000_00ff); // blue mask
+        assert_eq!(u32_at(&dib, 52), 0xff00_0000); // alpha mask
+        assert_eq!(u32_at(&dib, 56), 0x7352_4742); // LCS_sRGB
+        assert_eq!(u32_at(&dib, 108), 4); // LCS_GM_IMAGES
+        for offset in [24, 28, 32, 36, 100, 104, 112, 116, 120] {
+            assert_eq!(u32_at(&dib, offset), 0, "offset {offset}");
+        }
+    }
+
+    #[test]
+    fn dibv5_pixels_are_bgra_and_rows_are_bottom_up() {
+        // 1x2: top row is (1,2,3,4), bottom row is (5,6,7,8) in RGBA.
+        let dib = rgba_to_dibv5(1, 2, &[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
+        assert_eq!(&dib[BITMAPV5HEADER_SIZE..], &[7, 6, 5, 8, 3, 2, 1, 4]);
+    }
+
+    #[test]
+    fn dibv5_rejects_bad_dimensions() {
+        assert!(rgba_to_dibv5(0, 1, &[]).is_err());
+        assert!(rgba_to_dibv5(1, 0, &[]).is_err());
+        assert!(rgba_to_dibv5(2, 2, &[0; 15]).is_err());
+        assert!(rgba_to_dibv5(usize::MAX, 2, &[]).is_err());
+    }
+
+    #[test]
+    fn encode_png_round_trips_pixels() {
+        let rgba = vec![10, 20, 30, 255, 40, 50, 60, 128];
+        let png = encode_png(2, 1, &rgba).unwrap();
+        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+        assert_eq!(png_to_rgba(&png).unwrap(), (2, 1, rgba));
+    }
+
+    #[test]
+    fn encode_png_rejects_a_mismatched_buffer() {
+        assert!(encode_png(2, 2, &[0; 4]).is_err());
     }
 
     #[cfg(target_os = "linux")]
