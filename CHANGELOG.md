@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-27
+
 ### Added
 - **Sky and terrain on the `cloche studio` page.** The sky and terrain palettes
   join the backdrop grid as their own groups, and two new sheets, Skies
@@ -61,9 +63,10 @@ All notable changes to this project are documented here. The format follows
   free port, and `--print-url` prints the URL as JSON without serving. No new
   dependencies: the HTTP handling is
   hand-rolled on `std::net`.
-- **`capture --clipboard` on Windows.** The PNG is decoded to RGBA and written
-  with arboard in-process. Failures remain warnings. `arboard` is now a Linux
-  and Windows dependency (same `image-data` feature only).
+- **`capture --clipboard` on Windows.** The card is written in-process through
+  `clipboard-win` as `PNG` and `CF_DIBV5`, kept out of Clipboard History and
+  cloud sync (see Changed). Failures remain warnings. `arboard` stays the Linux
+  clipboard path.
 - **MCP image content.** The `capture`, `polish`, and `latest` MCP tools now
   append an `image` content block (base64, MIME type from the file's signature)
   with the presentation card after the JSON `text` block, so agents in a sandbox
@@ -364,7 +367,8 @@ All notable changes to this project are documented here. The format follows
   `preview` helpers, HTML gallery export, Codex `turn/start` payload
   generation, and a stdio MCP server.
 
-[Unreleased]: https://github.com/escoffier-labs/cloche/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/escoffier-labs/cloche/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/escoffier-labs/cloche/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/escoffier-labs/cloche/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/escoffier-labs/cloche/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/escoffier-labs/cloche/compare/v0.5.0...v0.5.1
