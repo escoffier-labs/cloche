@@ -400,7 +400,7 @@ with `--out-dir`). Files share one stem (`cloche-shot-<UTC>Z-<pid>-<n>`):
 - `<stem>.png`, the shareable card (or the raw shot when `--presentation raw`).
 - `<stem>.raw.png`, the raw capture when a card owns `<stem>.png`.
 - `<stem>.json`, the same JSON object printed to stdout.
-- `<stem>.txt`, optional best-effort accessible text from the focused app.
+- `<stem>.txt`, optional best-effort accessible text from the focused app. Only `active`, `window`, and `screen` captures attempt it; `--target region` skips it because a region selection has no focused window, and its `text` object stays `available: false`.
 
 Legacy folder-per-shot captures (`shot.png`, `shot-card.png`, `metadata.json`,
 `text.txt`) are still readable by `gallery`, `latest`, and `preview`.
@@ -524,7 +524,7 @@ Compatibility config:
 - `list-windows` requires X11 `DISPLAY` and `wmctrl`; without `wmctrl` it returns `ok: false` and an error (it does not soft-degrade).
 - Wayland wlroots screen capture uses `grim`. Region select prefers `flameshot`.
 - GNOME/KDE Wayland may block silent active-window capture by design. Use `--target screen` or run `cloche doctor --format json` for diagnostics.
-- Text extraction is best-effort through AT-SPI using Python GI when available.
+- Text extraction is best-effort through AT-SPI using Python GI when available. It reads the focused window, so it runs for `active`, `window`, and `screen` and is skipped for `--target region`.
 
 If you are invoking Cloche from SSH, a TTY, or an agent process that did not inherit the desktop environment, Cloche will try to discover the live desktop variables from desktop processes. On GNOME X11 they usually look like:
 
@@ -545,7 +545,7 @@ tr '\0' '\n' </proc/$(pgrep -u "$(id -u)" -n gnome-shell)/environ | grep -E '^(D
 
 - Active/window capture uses Win32 foreground-window and top-level-window metadata, then captures the target window with `PrintWindow` so covered windows are not polluted by whatever is on top. It falls back to `.NET CopyFromScreen` if `PrintWindow` is unavailable for that window.
 - Screen capture uses the Windows virtual screen.
-- Text extraction is best-effort through UI Automation.
+- Text extraction is best-effort through UI Automation. Region capture is not supported on Windows, so the region skip never applies here.
 - `--clipboard` copies the card as an image through arboard, in-process (Windows keeps the data after Cloche exits). Failures are warnings only; capture still succeeds.
 - Capture must run in a logged-in interactive desktop session. Plain OpenSSH sessions can build and run `doctor`, but Windows blocks screen capture from the non-interactive SSH service session.
 

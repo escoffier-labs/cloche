@@ -70,6 +70,13 @@ All notable changes to this project are documented here. The format follows
   4% backdrop by width, so whole cards are indistinguishable as swatches.
 
 ### Changed
+- `capture --target region` no longer attempts accessibility text extraction.
+  A region selection has no window of its own, so any text the AT-SPI attempt
+  found would have come from whichever window had focus, not the selected area.
+  In practice it found nothing and only added the "No accessible focused text
+  was exposed by AT-SPI." warning and up to 3 seconds. The `text` object keeps its shape
+  (`available: false`, `path: null`, `bytes: 0`, `source: null`) and no warning
+  is added. `active`, `window`, and `screen` are unchanged.
 - **BREAKING: capture JSON field `outputDir` is now `outDir`**, matching the
   flat `--out-dir` and gallery semantics (it is not a per-shot folder). Scripts
   that read `outputDir` from `capture` output must switch to `outDir`. Reading

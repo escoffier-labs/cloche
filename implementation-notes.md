@@ -909,3 +909,27 @@ of tests. It is now split with no behavior change:
   `cloche schema --for capture|polish|config` (pretty and compact) before and
   after: byte-identical. The test list is unchanged at 259 tests (24 of them
   moved out of `cli::tests`).
+
+## Skip text extraction for region captures (2026-11-27)
+
+- Evidence: on the maintainer's machine, 2,399 `capture --target region` grabs
+  (Flameshot) over five months produced extracted text 0 times, and 2,278 of
+  them carry the warning "No accessible focused text was exposed by AT-SPI."
+  Both extractors read the focused element of the focused window. A region
+  selection has no window of its own, so any text they found would belong to
+  whichever window had focus, not to the selected area (AT-SPI walks every
+  desktop for a focused element). In practice the attempt found nothing and only
+  added a warning and up to the 3 second `timeout` wrapper.
+- Decision: `text::should_extract_text(target)` returns false for `Region` only,
+  and `postprocess_capture` skips the extractor for it. The `text` object is the
+  same `TextInfo::default()` that a failed extraction returns (`available: false`,
+  `path: null`, `bytes: 0`, `source: null`), so consumers see no shape change.
+  No warning is added for the skip: it is the expected outcome, not a problem.
+  Clipboard publishing is unchanged and still runs first.
+- Windows: no change needed. `capture/windows.rs` rejects `--target region`
+  with an error before any capture, so the UI Automation extractor never sees a
+  region shot. If Windows region capture is added later, it falls under the same
+  function and is skipped too, since UI Automation reads the foreground window.
+- Not changed: `screen` still attempts extraction even though it has no single
+  target window. The evidence covers region only, and the foreground window at
+  capture time can still expose text.

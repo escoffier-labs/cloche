@@ -1,6 +1,16 @@
+use crate::contract::CaptureTarget;
 use crate::contract::TextInfo;
 use crate::util;
 use std::path::Path;
+
+/// Whether the post-capture accessibility text attempt is useful for this
+/// target. Both extractors (AT-SPI, UI Automation) read the focused element of
+/// the focused window. A region selection has no window of its own, so any text
+/// found would belong to whatever window had focus, not to the selected area.
+/// In practice it found nothing and only added a warning and latency.
+pub fn should_extract_text(target: CaptureTarget) -> bool {
+    !matches!(target, CaptureTarget::Region)
+}
 
 #[cfg(not(target_os = "windows"))]
 const ATSPI_SCRIPT: &str = r#"
@@ -257,6 +267,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create temp dir");
         dir
+    }
+
+    #[test]
+    fn text_extraction_is_skipped_only_for_region() {
+        assert!(should_extract_text(CaptureTarget::Active));
+        assert!(should_extract_text(CaptureTarget::Window));
+        assert!(should_extract_text(CaptureTarget::Screen));
+        assert!(!should_extract_text(CaptureTarget::Region));
     }
 
     #[cfg(not(target_os = "windows"))]
